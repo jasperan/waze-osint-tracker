@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Waze Madrid Logger - Event Map</title>
+    <title>Waze Global Traffic Tracker</title>
 
-    <!-- Favicon (data URI to avoid 404) -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -20,7 +20,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
+            background: #0a0a0a;
             color: #eee;
         }
 
@@ -31,36 +31,77 @@
 
         /* Sidebar */
         .sidebar {
-            width: 320px;
-            background: #16213e;
-            padding: 20px;
+            width: 280px;
+            background: rgba(10, 10, 10, 0.95);
+            padding: 15px;
             overflow-y: auto;
-            border-right: 1px solid #0f3460;
+            border-right: 1px solid #1a1a1a;
+            transition: transform 0.3s ease, width 0.3s ease;
+            position: relative;
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(-280px);
+            width: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .sidebar-toggle {
+            position: absolute;
+            left: 280px;
+            top: 15px;
+            width: 36px;
+            height: 36px;
+            background: rgba(10, 10, 10, 0.9);
+            border: 1px solid #333;
+            border-left: none;
+            border-radius: 0 6px 6px 0;
+            color: #ff6b35;
+            cursor: pointer;
+            z-index: 1002;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            transition: left 0.3s ease;
+        }
+
+        .sidebar.collapsed + .sidebar-toggle,
+        .sidebar.collapsed ~ .sidebar-toggle {
+            left: 0;
         }
 
         .sidebar h1 {
-            font-size: 1.4rem;
-            color: #e94560;
-            margin-bottom: 5px;
+            font-size: 1.1rem;
+            color: #ff6b35;
+            margin-bottom: 3px;
+            font-weight: 600;
         }
 
         .sidebar .subtitle {
-            font-size: 0.85rem;
-            color: #888;
-            margin-bottom: 20px;
+            font-size: 0.7rem;
+            color: #555;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
-        /* Stats Panel */
-        .stats-panel {
-            background: #0f3460;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
+        /* Panels */
+        .panel {
+            background: rgba(255, 107, 53, 0.03);
+            border: 1px solid rgba(255, 107, 53, 0.15);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
         }
 
-        .stats-panel h3 {
-            font-size: 0.9rem;
-            color: #e94560;
+        .panel h3 {
+            font-size: 0.7rem;
+            color: #ff6b35;
             margin-bottom: 10px;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -69,103 +110,222 @@
         .stat-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #1a1a2e;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 0.8rem;
         }
 
         .stat-row:last-child {
             border-bottom: none;
         }
 
-        .stat-label {
-            color: #aaa;
-        }
-
-        .stat-value {
-            font-weight: bold;
-            color: #00d9ff;
-        }
+        .stat-label { color: #666; }
+        .stat-value { font-weight: 600; color: #ff8c5a; }
 
         /* Filters */
-        .filters {
-            background: #0f3460;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-
-        .filters h3 {
-            font-size: 0.9rem;
-            color: #e94560;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
         .filter-group {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
 
         .filter-group label {
             display: block;
-            font-size: 0.85rem;
-            color: #aaa;
-            margin-bottom: 5px;
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 4px;
         }
 
         .filter-group select,
-        .filter-group input {
+        .filter-group input[type="date"] {
             width: 100%;
-            padding: 8px 12px;
-            background: #1a1a2e;
-            border: 1px solid #0f3460;
+            padding: 6px 8px;
+            background: #151515;
+            border: 1px solid #333;
             border-radius: 4px;
             color: #eee;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
         }
 
         .filter-group select:focus,
         .filter-group input:focus {
             outline: none;
-            border-color: #e94560;
+            border-color: #ff6b35;
         }
 
-        /* Type breakdown */
-        .type-breakdown {
-            margin-top: 15px;
+        /* Type filters */
+        .type-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 6px;
         }
 
-        .type-item {
+        .type-chip {
+            padding: 4px 8px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.2s;
             display: flex;
             align-items: center;
-            padding: 6px 0;
+            gap: 4px;
+        }
+
+        .type-chip:hover {
+            border-color: #ff6b35;
+        }
+
+        .type-chip.active {
+            background: rgba(255, 107, 53, 0.2);
+            border-color: #ff6b35;
+            color: #ff8c5a;
+        }
+
+        .type-chip .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 6px 12px;
+            background: #ff6b35;
+            border: none;
+            border-radius: 4px;
+            color: #0a0a0a;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .btn:hover { background: #ff8c5a; }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 0.7rem;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid #333;
+            color: #888;
+        }
+
+        .btn-ghost:hover {
+            border-color: #ff6b35;
+            color: #ff6b35;
+            background: rgba(255, 107, 53, 0.1);
+        }
+
+        /* Checkbox */
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: #888;
+            gap: 6px;
+        }
+
+        .checkbox-label input {
+            accent-color: #ff6b35;
+        }
+
+        /* Live Feed */
+        .live-feed {
+            flex: 1;
+            min-height: 150px;
+            max-height: 250px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .feed-header h3 {
+            margin: 0;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.65rem;
+            color: #666;
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ff6b35;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .feed-items {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 0.7rem;
+        }
+
+        .feed-item {
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            background: rgba(255, 107, 53, 0.05);
+            border-radius: 4px;
+            border-left: 2px solid #ff6b35;
+            animation: slideIn 0.3s ease;
+        }
+
+        .feed-item.clickable {
             cursor: pointer;
             transition: background 0.2s;
         }
 
-        .type-item:hover {
-            background: rgba(233, 69, 96, 0.1);
+        .feed-item.clickable:hover {
+            background: rgba(255, 107, 53, 0.2);
         }
 
-        .type-item.active {
-            background: rgba(233, 69, 96, 0.2);
+        .feed-item.new {
+            animation: highlight 1s ease;
         }
 
-        .type-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 10px;
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
         }
 
-        .type-name {
-            flex: 1;
-            font-size: 0.85rem;
+        @keyframes highlight {
+            0% { background: rgba(255, 107, 53, 0.3); }
+            100% { background: rgba(255, 107, 53, 0.05); }
         }
 
-        .type-count {
-            font-size: 0.85rem;
+        .feed-item .type {
+            color: #ff8c5a;
+            font-weight: 600;
+        }
+
+        .feed-item .location {
             color: #888;
+        }
+
+        .feed-item .time {
+            color: #555;
+            font-size: 0.65rem;
         }
 
         /* Map Container */
@@ -177,107 +337,272 @@
         #map {
             width: 100%;
             height: 100%;
+            background: #0a0a0a;
         }
 
-        /* Event Details Popup */
-        .event-popup {
-            min-width: 200px;
-        }
-
-        .event-popup h4 {
-            color: #e94560;
-            margin-bottom: 8px;
-            font-size: 1rem;
-        }
-
-        .event-popup .detail {
-            font-size: 0.85rem;
-            color: #333;
-            margin: 4px 0;
-        }
-
-        .event-popup .detail strong {
-            color: #0f3460;
-        }
-
-        /* Loading overlay */
-        .loading {
+        /* Status Bar */
+        .status-bar {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(22, 33, 62, 0.9);
-            padding: 20px 40px;
-            border-radius: 8px;
+            top: 12px;
+            right: 12px;
+            background: rgba(10, 10, 10, 0.9);
+            border: 1px solid #333;
+            padding: 6px 12px;
+            border-radius: 16px;
             z-index: 1000;
+            font-size: 0.7rem;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 350px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ff6b35;
+            animation: pulse 2s infinite;
+            flex-shrink: 0;
+        }
+
+        #status-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* Legend */
         .legend {
             position: absolute;
-            bottom: 30px;
-            right: 10px;
-            background: rgba(22, 33, 62, 0.95);
-            padding: 15px;
-            border-radius: 8px;
+            bottom: 25px;
+            right: 12px;
+            background: rgba(10, 10, 10, 0.9);
+            border: 1px solid #333;
+            padding: 10px 12px;
+            border-radius: 6px;
             z-index: 1000;
-            font-size: 0.8rem;
+            font-size: 0.7rem;
         }
 
         .legend h4 {
-            color: #e94560;
-            margin-bottom: 10px;
+            color: #ff6b35;
+            margin-bottom: 6px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .legend-gradient {
-            width: 150px;
-            height: 15px;
-            background: linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444);
-            border-radius: 3px;
-            margin-bottom: 5px;
+            width: 100px;
+            height: 10px;
+            background: linear-gradient(to right, #2d1000, #8b3a00, #ff6b35, #ff8c5a);
+            border-radius: 2px;
+            margin-bottom: 4px;
         }
 
         .legend-labels {
             display: flex;
             justify-content: space-between;
-            color: #aaa;
+            color: #555;
+            font-size: 0.65rem;
         }
 
-        /* Buttons */
-        .btn {
-            padding: 8px 16px;
-            background: #e94560;
-            border: none;
-            border-radius: 4px;
-            color: white;
-            cursor: pointer;
+        /* Popup styling */
+        .event-popup h4 {
+            color: #ff6b35;
+            margin-bottom: 6px;
+        }
+
+        .event-popup .detail {
             font-size: 0.85rem;
-            margin-top: 10px;
+            color: #333;
+            margin: 3px 0;
+        }
+
+        .event-popup .detail strong {
+            color: #1a1a1a;
+        }
+
+        /* Leaderboard */
+        .leaderboard-panel {
+            min-height: 120px;
+        }
+
+        .leaderboard {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 8px;
+            margin-bottom: 4px;
+            background: rgba(255, 107, 53, 0.03);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .leaderboard-item:hover {
+            background: rgba(255, 107, 53, 0.1);
+        }
+
+        .leaderboard-rank {
+            width: 22px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 0.7rem;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        .leaderboard-rank.gold {
+            background: linear-gradient(135deg, #ffd700, #ffb800);
+            color: #1a1a1a;
+        }
+
+        .leaderboard-rank.silver {
+            background: linear-gradient(135deg, #c0c0c0, #a8a8a8);
+            color: #1a1a1a;
+        }
+
+        .leaderboard-rank.bronze {
+            background: linear-gradient(135deg, #cd7f32, #b87333);
+            color: #1a1a1a;
+        }
+
+        .leaderboard-rank.normal {
+            background: #333;
+            color: #888;
+        }
+
+        .leaderboard-username {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #ccc;
+        }
+
+        .leaderboard-count {
+            color: #ff8c5a;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        /* User search */
+        #user-search {
             width: 100%;
+            padding: 6px 8px;
+            background: #151515;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #eee;
+            font-size: 0.8rem;
         }
 
-        .btn:hover {
-            background: #ff6b6b;
+        #user-search:focus {
+            outline: none;
+            border-color: #ff6b35;
         }
 
-        .btn-secondary {
-            background: #0f3460;
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #151515;
+            border: 1px solid #333;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            z-index: 100;
         }
 
-        .btn-secondary:hover {
-            background: #1a4f8a;
+        .user-option {
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #222;
+        }
+
+        .user-option:hover {
+            background: rgba(255, 107, 53, 0.1);
+        }
+
+        .user-option .count {
+            color: #555;
+        }
+
+        .selected-user {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 107, 53, 0.15);
+            border: 1px solid rgba(255, 107, 53, 0.3);
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-top: 6px;
+            font-size: 0.8rem;
+        }
+
+        .selected-user span {
+            color: #ff8c5a;
+            font-weight: 500;
+        }
+
+        .btn-clear {
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0 4px;
+        }
+
+        .btn-clear:hover {
+            color: #ff6b35;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 2px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #ff6b35;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Sidebar -->
-        <div class="sidebar">
-            <h1>Waze Madrid Logger</h1>
-            <p class="subtitle">Traffic Event Surveillance Map</p>
+        <div class="sidebar" id="sidebar">
+            <h1>Global Traffic Tracker</h1>
+            <p class="subtitle">Real-time Worldwide Monitor</p>
 
-            <!-- Stats Panel -->
-            <div class="stats-panel">
+            <!-- Stats -->
+            <div class="panel">
                 <h3>Statistics</h3>
                 <div class="stat-row">
                     <span class="stat-label">Total Events</span>
@@ -288,60 +613,117 @@
                     <span class="stat-value" id="stat-users">-</span>
                 </div>
                 <div class="stat-row">
-                    <span class="stat-label">Time Range</span>
+                    <span class="stat-label">Date Range</span>
                     <span class="stat-value" id="stat-time">-</span>
                 </div>
             </div>
 
+            <!-- Leaderboard -->
+            <div class="panel leaderboard-panel">
+                <h3>Top Contributors</h3>
+                <div class="leaderboard" id="leaderboard">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
             <!-- Filters -->
-            <div class="filters">
+            <div class="panel">
                 <h3>Filters</h3>
 
                 <div class="filter-group">
                     <label>Time Range</label>
-                    <select id="filter-time">
-                        <option value="">All Time</option>
+                    <select id="filter-time" onchange="onFilterChange()">
+                        <option value="">All Data</option>
                         <option value="1">Last Hour</option>
                         <option value="6">Last 6 Hours</option>
                         <option value="24">Last 24 Hours</option>
                         <option value="168">Last Week</option>
+                        <option value="custom">Custom Range</option>
                     </select>
                 </div>
 
+                <div class="filter-group" id="date-range-group" style="display: none;">
+                    <label>From</label>
+                    <input type="date" id="filter-date-from" onchange="onFilterChange()">
+                    <label style="margin-top: 6px;">To</label>
+                    <input type="date" id="filter-date-to" onchange="onFilterChange()">
+                </div>
+
                 <div class="filter-group">
-                    <label>Event Type</label>
-                    <div class="type-breakdown" id="type-filters">
+                    <label>Event Type (click to filter)</label>
+                    <div class="type-filters" id="type-filters">
                         <!-- Populated by JS -->
                     </div>
                 </div>
 
-                <button class="btn" onclick="applyFilters()">Apply Filters</button>
-                <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+                <div class="filter-group">
+                    <label>Track User</label>
+                    <div style="position: relative;">
+                        <input type="text" id="user-search" placeholder="Search username..."
+                               autocomplete="off" oninput="searchUsers(this.value)" onfocus="showUserDropdown()">
+                        <div id="user-dropdown" class="user-dropdown" style="display: none;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    <div id="selected-user" class="selected-user" style="display: none;">
+                        <span id="selected-user-name"></span>
+                        <button class="btn-clear" onclick="clearUserFilter()">&times;</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                    <button class="btn btn-ghost btn-small" onclick="resetFilters()">Reset All</button>
+                </div>
             </div>
 
-            <!-- View Controls -->
-            <div class="filters">
-                <h3>View Options</h3>
+            <!-- Display Options -->
+            <div class="panel">
+                <h3>Display</h3>
                 <div class="filter-group">
-                    <label>
-                        <input type="checkbox" id="show-heatmap" checked> Show Heatmap
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-heatmap" checked onchange="toggleHeatmap()">
+                        Heatmap Layer
                     </label>
                 </div>
                 <div class="filter-group">
-                    <label>
-                        <input type="checkbox" id="show-markers"> Show Markers
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-markers" onchange="toggleMarkers()">
+                        Event Markers
                     </label>
+                </div>
+            </div>
+
+            <!-- Live Feed -->
+            <div class="panel live-feed">
+                <div class="feed-header">
+                    <h3>Live Feed</h3>
+                    <div class="live-indicator">
+                        <span class="live-dot"></span>
+                        <span id="connection-status">Connecting...</span>
+                    </div>
+                </div>
+                <div class="feed-items" id="feed-items">
+                    <!-- Populated by SSE -->
                 </div>
             </div>
         </div>
+
+        <!-- Sidebar Toggle -->
+        <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
 
         <!-- Map -->
         <div class="map-container">
             <div id="map"></div>
 
+            <!-- Status Bar -->
+            <div class="status-bar">
+                <span class="status-dot"></span>
+                <span id="status-text">Initializing...</span>
+            </div>
+
             <!-- Legend -->
             <div class="legend">
-                <h4>Event Density</h4>
+                <h4>Density</h4>
                 <div class="legend-gradient"></div>
                 <div class="legend-labels">
                     <span>Low</span>
@@ -353,54 +735,64 @@
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet Heatmap -->
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
     <script>
-        // Initialize map centered on Madrid
-        const map = L.map('map').setView([40.4168, -3.7038], 13);
+        // Map initialization
+        const map = L.map('map', { zoomControl: false }).setView([45, 10], 4);
+        L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-        // Dark tile layer
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap, &copy; CARTO',
-            maxZoom: 19
+            attribution: '',
+            maxZoom: 19,
+            opacity: 0.8
         }).addTo(map);
 
         // Layers
         let heatLayer = null;
         let markersLayer = L.layerGroup().addTo(map);
 
-        // Event type colors
-        const typeColors = {
-            'POLICE': '#3498db',
-            'JAM': '#e74c3c',
-            'HAZARD': '#f39c12',
-            'ROAD_CLOSED': '#9b59b6',
-            'ACCIDENT': '#e91e63',
-            'CONSTRUCTION': '#ff9800'
+        // Current filter state
+        let currentFilters = {
+            type: null,
+            since: null,
+            dateFrom: null,
+            dateTo: null,
+            user: null
         };
 
-        // Load initial data
-        loadStats();
-        loadTypes();
-        loadHeatmap();
+        // User search debounce timer
+        let userSearchTimer = null;
+
+        // Event type colors
+        const typeColors = {
+            'POLICE': '#3b82f6',      // Blue
+            'JAM': '#f97316',          // Orange
+            'HAZARD': '#facc15',       // Yellow
+            'ROAD_CLOSED': '#a855f7',  // Purple
+            'ACCIDENT': '#ef4444',     // Red
+            'CONSTRUCTION': '#6b7280'  // Gray
+        };
+
+        // Toggle sidebar
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebar-toggle');
+            sidebar.classList.toggle('collapsed');
+            toggle.textContent = sidebar.classList.contains('collapsed') ? '☰' : '×';
+        }
 
         // Load statistics
         async function loadStats() {
             try {
                 const res = await fetch('/api/stats');
                 const stats = await res.json();
-
-                document.getElementById('stat-total').textContent =
-                    stats.total_events.toLocaleString();
-                document.getElementById('stat-users').textContent =
-                    stats.unique_users.toLocaleString();
-
+                document.getElementById('stat-total').textContent = stats.total_events.toLocaleString();
+                document.getElementById('stat-users').textContent = stats.unique_users.toLocaleString();
                 if (stats.first_event && stats.last_event) {
                     const first = stats.first_event.substring(0, 10);
                     const last = stats.last_event.substring(0, 10);
-                    document.getElementById('stat-time').textContent =
-                        first === last ? first : `${first} - ${last}`;
+                    document.getElementById('stat-time').textContent = first === last ? first : `${first} - ${last}`;
                 }
             } catch (err) {
                 console.error('Failed to load stats:', err);
@@ -412,63 +804,191 @@
             try {
                 const res = await fetch('/api/types');
                 const types = await res.json();
-
                 const container = document.getElementById('type-filters');
                 container.innerHTML = '';
 
                 types.forEach(t => {
                     const color = typeColors[t.type] || '#888';
-                    const item = document.createElement('div');
-                    item.className = 'type-item';
-                    item.dataset.type = t.type;
-                    item.innerHTML = `
-                        <div class="type-dot" style="background: ${color}"></div>
-                        <span class="type-name">${t.type}</span>
-                        <span class="type-count">${t.count}</span>
-                    `;
-                    item.onclick = () => toggleTypeFilter(item);
-                    container.appendChild(item);
+                    const chip = document.createElement('div');
+                    chip.className = 'type-chip';
+                    chip.dataset.type = t.type;
+                    chip.innerHTML = `<span class="dot" style="background: ${color}"></span>${t.type} <span style="color:#555">${t.count}</span>`;
+                    chip.onclick = () => selectType(chip);
+                    container.appendChild(chip);
                 });
             } catch (err) {
                 console.error('Failed to load types:', err);
             }
         }
 
-        // Toggle type filter
-        function toggleTypeFilter(item) {
-            item.classList.toggle('active');
+        // Select a single type (exclusive selection)
+        function selectType(chip) {
+            const wasActive = chip.classList.contains('active');
+
+            // Deselect all
+            document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
+
+            // If wasn't active, select this one
+            if (!wasActive) {
+                chip.classList.add('active');
+                currentFilters.type = chip.dataset.type;
+            } else {
+                currentFilters.type = null;
+            }
+
+            // Apply filters immediately
+            applyFilters();
         }
 
-        // Load heatmap data
-        async function loadHeatmap(type = null, since = null) {
-            try {
-                let url = '/api/heatmap?';
-                if (type) url += `type=${type}&`;
-                if (since) url += `since=${since}&`;
+        // Handle filter changes
+        function onFilterChange() {
+            const timeValue = document.getElementById('filter-time').value;
+            const dateRangeGroup = document.getElementById('date-range-group');
 
+            if (timeValue === 'custom') {
+                dateRangeGroup.style.display = 'block';
+                currentFilters.since = null;
+                currentFilters.dateFrom = document.getElementById('filter-date-from').value || null;
+                currentFilters.dateTo = document.getElementById('filter-date-to').value || null;
+            } else {
+                dateRangeGroup.style.display = 'none';
+                currentFilters.since = timeValue || null;
+                currentFilters.dateFrom = null;
+                currentFilters.dateTo = null;
+            }
+
+            applyFilters();
+        }
+
+        // Apply all filters
+        function applyFilters() {
+            loadHeatmap();
+            if (document.getElementById('show-markers').checked) {
+                loadMarkers();
+            }
+        }
+
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('filter-time').value = '';
+            document.getElementById('filter-date-from').value = '';
+            document.getElementById('filter-date-to').value = '';
+            document.getElementById('date-range-group').style.display = 'none';
+            document.getElementById('user-search').value = '';
+            document.getElementById('selected-user').style.display = 'none';
+            document.querySelectorAll('.type-chip.active').forEach(c => c.classList.remove('active'));
+
+            currentFilters = { type: null, since: null, dateFrom: null, dateTo: null, user: null };
+            applyFilters();
+            loadStats();
+        }
+
+        // Build URL with current filters
+        function buildFilterUrl(baseUrl) {
+            let url = baseUrl + '?';
+            if (currentFilters.type) url += `type=${currentFilters.type}&`;
+            if (currentFilters.since) url += `since=${currentFilters.since}&`;
+            if (currentFilters.dateFrom) url += `from=${currentFilters.dateFrom}&`;
+            if (currentFilters.dateTo) url += `to=${currentFilters.dateTo}&`;
+            if (currentFilters.user) url += `user=${encodeURIComponent(currentFilters.user)}&`;
+            return url;
+        }
+
+        // User search functionality
+        async function searchUsers(query) {
+            clearTimeout(userSearchTimer);
+            userSearchTimer = setTimeout(async () => {
+                const dropdown = document.getElementById('user-dropdown');
+                if (!query || query.length < 2) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/users?q=${encodeURIComponent(query)}&limit=20`);
+                    const users = await res.json();
+
+                    if (users.length > 0) {
+                        dropdown.innerHTML = users.map(u =>
+                            `<div class="user-option" onclick="selectUser('${u.username.replace(/'/g, "\\'")}')">
+                                <span>${u.username}</span>
+                                <span class="count">${u.count} events</span>
+                            </div>`
+                        ).join('');
+                        dropdown.style.display = 'block';
+                    } else {
+                        dropdown.innerHTML = '<div class="user-option" style="color:#555">No users found</div>';
+                        dropdown.style.display = 'block';
+                    }
+                } catch (err) {
+                    console.error('User search failed:', err);
+                }
+            }, 300);
+        }
+
+        function showUserDropdown() {
+            const input = document.getElementById('user-search');
+            if (input.value.length >= 2) {
+                document.getElementById('user-dropdown').style.display = 'block';
+            }
+        }
+
+        function selectUser(username) {
+            currentFilters.user = username;
+
+            // Update UI
+            document.getElementById('user-search').value = '';
+            document.getElementById('user-dropdown').style.display = 'none';
+            document.getElementById('selected-user').style.display = 'flex';
+            document.getElementById('selected-user-name').textContent = username;
+
+            applyFilters();
+
+            // Update status
+            document.getElementById('status-text').textContent = `Tracking user: ${username}`;
+        }
+
+        function clearUserFilter() {
+            currentFilters.user = null;
+            document.getElementById('selected-user').style.display = 'none';
+            document.getElementById('user-search').value = '';
+            applyFilters();
+        }
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#user-search') && !e.target.closest('#user-dropdown')) {
+                document.getElementById('user-dropdown').style.display = 'none';
+            }
+        });
+
+        // Load heatmap data
+        async function loadHeatmap() {
+            try {
+                const url = buildFilterUrl('/api/heatmap');
                 const res = await fetch(url);
                 const data = await res.json();
 
-                // Remove old heatmap
                 if (heatLayer) {
                     map.removeLayer(heatLayer);
+                    heatLayer = null;
                 }
 
-                // Create new heatmap
                 if (data.length > 0) {
                     const maxIntensity = Math.max(...data.map(d => d[2]));
                     heatLayer = L.heatLayer(data, {
-                        radius: 30,
-                        blur: 20,
+                        radius: 25,
+                        blur: 15,
                         maxZoom: 17,
                         max: maxIntensity || 1,
-                        minOpacity: 0.4,
+                        minOpacity: 0.3,
                         gradient: {
-                            0.0: '#22c55e',  // Green
-                            0.25: '#84cc16', // Lime
-                            0.5: '#eab308',  // Yellow
-                            0.75: '#f97316', // Orange
-                            1.0: '#ef4444'   // Red
+                            0.0: '#2d1000',
+                            0.2: '#4a2000',
+                            0.4: '#8b3a00',
+                            0.6: '#cc5500',
+                            0.8: '#ff6b35',
+                            1.0: '#ff8c5a'
                         }
                     });
 
@@ -476,29 +996,28 @@
                         heatLayer.addTo(map);
                     }
                 }
+
+                // Update status
+                document.getElementById('status-text').textContent =
+                    `Showing ${data.length} locations` + (currentFilters.type ? ` (${currentFilters.type})` : '');
             } catch (err) {
                 console.error('Failed to load heatmap:', err);
             }
         }
 
         // Load markers
-        async function loadMarkers(type = null, since = null) {
+        async function loadMarkers() {
             try {
-                let url = '/api/events?limit=500&';
-                if (type) url += `type=${type}&`;
-                if (since) url += `since=${since}&`;
-
+                const url = buildFilterUrl('/api/events') + 'limit=500&';
                 const res = await fetch(url);
                 const events = await res.json();
 
-                // Clear old markers
                 markersLayer.clearLayers();
 
                 events.forEach(event => {
                     const color = typeColors[event.type] || '#888';
-
                     const marker = L.circleMarker([event.latitude, event.longitude], {
-                        radius: 6,
+                        radius: 5,
                         fillColor: color,
                         color: '#fff',
                         weight: 1,
@@ -523,57 +1042,200 @@
             }
         }
 
-        // Apply filters
-        function applyFilters() {
-            const since = document.getElementById('filter-time').value || null;
-
-            // Get selected types
-            const activeTypes = document.querySelectorAll('.type-item.active');
-            let type = null;
-            if (activeTypes.length === 1) {
-                type = activeTypes[0].dataset.type;
-            }
-
-            loadHeatmap(type, since);
-            if (document.getElementById('show-markers').checked) {
-                loadMarkers(type, since);
-            }
-            loadStats();
-        }
-
-        // Reset filters
-        function resetFilters() {
-            document.getElementById('filter-time').value = '';
-            document.querySelectorAll('.type-item.active').forEach(item => {
-                item.classList.remove('active');
-            });
-            applyFilters();
-        }
-
         // Toggle heatmap visibility
-        document.getElementById('show-heatmap').addEventListener('change', function() {
-            if (this.checked && heatLayer) {
-                heatLayer.addTo(map);
+        function toggleHeatmap() {
+            if (document.getElementById('show-heatmap').checked) {
+                if (heatLayer) heatLayer.addTo(map);
+                else loadHeatmap();
             } else if (heatLayer) {
                 map.removeLayer(heatLayer);
             }
-        });
+        }
 
         // Toggle markers visibility
-        document.getElementById('show-markers').addEventListener('change', function() {
-            if (this.checked) {
+        function toggleMarkers() {
+            if (document.getElementById('show-markers').checked) {
                 loadMarkers();
-                markersLayer.addTo(map);
             } else {
                 markersLayer.clearLayers();
             }
-        });
+        }
 
-        // Auto-refresh every 5 minutes
+        // Add item to live feed
+        function addFeedItem(data) {
+            const feed = document.getElementById('feed-items');
+            const item = document.createElement('div');
+            item.className = 'feed-item new';
+
+            if (data.type === 'new_event' && data.event) {
+                const e = data.event;
+                const time = new Date(e.timestamp).toLocaleTimeString();
+                const color = typeColors[e.report_type] || '#888';
+                item.innerHTML = `
+                    <span class="type" style="color:${color}">${e.report_type}</span>
+                    <span class="location">${e.grid_cell || `${e.latitude.toFixed(2)}, ${e.longitude.toFixed(2)}`}</span>
+                    <span class="time">${time}</span>
+                `;
+                item.style.borderLeftColor = color;
+
+                // Make event items clickable to navigate to location
+                if (e.latitude && e.longitude) {
+                    item.classList.add('clickable');
+                    item.dataset.lat = e.latitude;
+                    item.dataset.lng = e.longitude;
+                    item.dataset.type = e.report_type;
+                    item.title = 'Click to view on map';
+                    item.addEventListener('click', () => {
+                        const lat = parseFloat(item.dataset.lat);
+                        const lng = parseFloat(item.dataset.lng);
+                        map.flyTo([lat, lng], 14, { duration: 1 });
+
+                        // Add a temporary marker to highlight the location
+                        const markerColor = typeColors[item.dataset.type] || '#ff6b35';
+                        const pulseMarker = L.circleMarker([lat, lng], {
+                            radius: 12,
+                            color: markerColor,
+                            fillColor: markerColor,
+                            fillOpacity: 0.5,
+                            weight: 3
+                        }).addTo(map);
+
+                        // Pulse animation then remove
+                        setTimeout(() => map.removeLayer(pulseMarker), 3000);
+                    });
+                }
+            } else if (data.type === 'status') {
+                // Skip status items with 0 alerts and 0 new events
+                if (data.alerts_found === 0 && data.new_events === 0) {
+                    return;
+                }
+
+                const color = typeColors[data.event_types?.[0]] || '#ff6b35';
+                item.innerHTML = `
+                    <span class="type" style="color:#888">SCAN</span>
+                    <span class="location">${data.cell_name} (${data.country})</span>
+                    <span class="time">${data.cell_idx}/${data.total_cells} • +${data.new_events}</span>
+                `;
+                item.style.borderLeftColor = data.new_events > 0 ? '#ff6b35' : '#333';
+
+                // Update status bar
+                document.getElementById('status-text').textContent =
+                    `[${data.region.toUpperCase()}] ${data.cell_name} (${data.country}) • ${data.alerts_found} alerts, +${data.new_events} new`;
+            } else {
+                return; // Skip heartbeats and unknown types
+            }
+
+            // Insert at top
+            feed.insertBefore(item, feed.firstChild);
+
+            // Remove 'new' class after animation
+            setTimeout(() => item.classList.remove('new'), 1000);
+
+            // Keep only last 50 items
+            while (feed.children.length > 50) {
+                feed.removeChild(feed.lastChild);
+            }
+        }
+
+        // Connect to SSE stream
+        function connectSSE() {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.textContent = 'Connecting...';
+
+            const eventSource = new EventSource('/api/stream');
+
+            eventSource.onopen = () => {
+                statusEl.textContent = 'Connected';
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'connected') {
+                        statusEl.textContent = 'Live';
+                    } else if (data.type === 'heartbeat') {
+                        // Ignore heartbeats
+                    } else if (data.type === 'new_event') {
+                        addFeedItem(data);
+                        // Refresh stats periodically
+                        loadStats();
+                    } else if (data.type === 'status') {
+                        addFeedItem(data);
+                    }
+                } catch (err) {
+                    console.error('SSE parse error:', err);
+                }
+            };
+
+            eventSource.onerror = () => {
+                statusEl.textContent = 'Reconnecting...';
+                eventSource.close();
+                // Reconnect after 5 seconds
+                setTimeout(connectSSE, 5000);
+            };
+        }
+
+        // Load recent activity on startup
+        async function loadRecentActivity() {
+            try {
+                const res = await fetch('/api/recent-activity');
+                const events = await res.json();
+
+                // Add last 10 events to feed (reversed so newest is on top)
+                events.slice(0, 10).forEach(e => {
+                    addFeedItem({
+                        type: 'new_event',
+                        event: {
+                            ...e,
+                            report_type: e.type
+                        }
+                    });
+                });
+            } catch (err) {
+                console.error('Failed to load recent activity:', err);
+            }
+        }
+
+        // Load leaderboard
+        async function loadLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard?limit=10');
+                const users = await res.json();
+                const container = document.getElementById('leaderboard');
+
+                container.innerHTML = users.map(user => {
+                    let rankClass = 'normal';
+                    if (user.rank === 1) rankClass = 'gold';
+                    else if (user.rank === 2) rankClass = 'silver';
+                    else if (user.rank === 3) rankClass = 'bronze';
+
+                    return `
+                        <div class="leaderboard-item" onclick="selectUser('${user.username.replace(/'/g, "\\'")}')">
+                            <span class="leaderboard-rank ${rankClass}">${user.rank}</span>
+                            <span class="leaderboard-username">${user.username}</span>
+                            <span class="leaderboard-count">${user.count.toLocaleString()}</span>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error('Failed to load leaderboard:', err);
+            }
+        }
+
+        // Initialize
+        loadStats();
+        loadTypes();
+        loadLeaderboard();
+        loadHeatmap();
+        loadRecentActivity();
+        connectSSE();
+
+        // Refresh stats and leaderboard every 60 seconds
         setInterval(() => {
             loadStats();
-            applyFilters();
-        }, 300000);
+            loadLeaderboard();
+        }, 60000);
     </script>
 </body>
 </html>

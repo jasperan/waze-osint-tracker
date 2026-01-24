@@ -1,16 +1,19 @@
-# Waze Madrid Logger
+# Waze Worldwide Logger
 
-A data collection and analysis tool for Waze traffic events in Madrid. Demonstrates location privacy risks in crowdsourced traffic applications.
+A worldwide data collection and analysis tool for Waze traffic events. Demonstrates location privacy risks in crowdsourced traffic applications.
 
 ## Overview
 
-This tool captures Waze traffic reports (police, jams, hazards) along with:
+This tool captures Waze traffic reports (police, jams, hazards, accidents, road closures) from **5 continents** with:
 - **Username** of the reporter
 - **GPS coordinates** (latitude/longitude)
 - **Timestamp** (millisecond precision)
 - **Report type** and subtype
+- **Region and city** information
 
 By collecting this data over time, it's possible to build detailed movement profiles of individual users - demonstrating significant privacy implications of Waze's crowdsourced model.
+
+**Coverage:** 8,656 grid cells across Europe, Americas, Asia, Oceania, and Africa
 
 **Based on research by [Covert Labs](https://x.com/harrris0n/status/2014197314571952167)**
 
@@ -19,8 +22,7 @@ By collecting this data over time, it's possible to build detailed movement prof
 ### Prerequisites
 
 - Python 3.10+
-- Java 11+ (for Waze API server)
-- ~100MB disk space
+- ~500MB disk space (for worldwide data)
 
 ### 1. Clone and setup
 
@@ -32,24 +34,21 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Download Waze API server
+### 2. Start worldwide collector
 
 ```bash
-mkdir -p lib
-curl -L https://github.com/Nimrod007/waze-api/releases/download/v1.0/waze-server.jar -o lib/waze-server.jar
+# Start the multithreaded worldwide collector
+python collector_worldwide.py
+
+# Or run in background
+nohup python collector_worldwide.py > /dev/null 2>&1 &
 ```
 
-### 3. Start collecting
+### 3. Start web visualization
 
 ```bash
-# Terminal 1: Start Waze API server
-java -jar lib/waze-server.jar server
-
-# Terminal 2: Start collector
-python cli.py start
-
-# Check status
-python cli.py status
+python web/app.py
+# Open http://localhost:5000
 ```
 
 ### 4. Explore the data
@@ -60,6 +59,53 @@ python cli.py recent          # Latest events
 python cli.py users           # Active users
 python cli.py profile <user>  # User movement analysis
 ```
+
+## Worldwide Collector
+
+The worldwide collector scans 5 continents in parallel using multithreading:
+
+| Region | Priority 1 (Cities) | Priority 3 (Coverage) | Total |
+|--------|--------------------|-----------------------|-------|
+| Europe | 477 | 1,748 | 2,225 |
+| Americas | 693 | 1,692 | 2,385 |
+| Asia | 684 | 1,517 | 2,201 |
+| Oceania | 216 | 481 | 697 |
+| Africa | 315 | 833 | 1,148 |
+| **Total** | **2,385** | **6,271** | **8,656** |
+
+### Collection Strategy
+
+- **Priority 1 (Cities):** Major metropolitan areas, scanned every cycle
+- **Priority 3 (Coverage):** Broader coverage areas, scanned every 10 cycles
+- **Parallel scanning:** All 5 regions scanned simultaneously
+- **WAL mode:** Thread-safe SQLite with Write-Ahead Logging
+
+## Web Visualization UI
+
+The web UI provides real-time visualization at `http://localhost:5000`:
+
+### Features
+
+- **Live Map:** Leaflet.js heatmap of worldwide events
+- **Real-time Feed:** SSE-powered live event stream
+- **Type Filtering:** Filter by POLICE (blue), ACCIDENT (red), JAM (orange), HAZARD (yellow), ROAD_CLOSED (purple)
+- **User Tracking:** Search and filter events by specific username
+- **Time Filters:** Filter by date range or hours ago
+- **Leaderboard:** Top contributors ranked by event count
+- **Click-to-Navigate:** Click any event in the live feed to fly to its location on the map
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/stats` | Summary statistics from all databases |
+| `/api/events` | Events with filters (type, user, since, from, to) |
+| `/api/heatmap` | Aggregated coordinates for heatmap layer |
+| `/api/types` | Event types with counts |
+| `/api/users` | User list with search |
+| `/api/leaderboard` | Top contributors |
+| `/api/stream` | Server-Sent Events for real-time updates |
+| `/api/status` | Current collector status |
 
 ## CLI Commands
 
@@ -96,47 +142,38 @@ python cli.py export --format csv      # Export to CSV
 python cli.py export --format geojson  # Export for mapping
 ```
 
-### Configuration
-
-```bash
-python cli.py config                  # Show config
-python cli.py config --interval 180   # Set 3-minute polling
-```
-
 ## Configuration
 
-Edit `config.yaml`:
-
-```yaml
-polling_interval_seconds: 300
-waze_server_url: "http://localhost:8080"
-database_path: "./data/waze_madrid.db"
-
-grid_cells:
-  - name: "gran_via_castellana"
-    lat_top: 40.46
-    lat_bottom: 40.42
-    lon_left: -3.71
-    lon_right: -3.68
-```
+Regional configs are auto-generated on first run:
+- `config_europe.yaml`
+- `config_americas.yaml`
+- `config_asia.yaml`
+- `config_oceania.yaml`
+- `config_africa.yaml`
 
 ## Project Structure
 
 ```
 waze-madrid-logger/
-├── cli.py              # CLI entry point
-├── collector.py        # Collection daemon
-├── database.py         # SQLite operations
-├── analysis.py         # Stats and profiling
-├── grid.py             # Grid cell definitions
-├── waze_client.py      # Waze API client
-├── config.yaml         # Configuration
-├── requirements.txt    # Dependencies
-├── lib/
-│   └── waze-server.jar
+├── cli.py                    # CLI entry point
+├── collector_worldwide.py    # Multithreaded worldwide collector
+├── database.py               # SQLite operations (WAL mode)
+├── analysis.py               # Stats and profiling
+├── waze_client.py            # Direct Waze API client
+├── web/
+│   ├── app.py                # Flask web application
+│   └── templates/
+│       └── index.html        # Map visualization UI
+├── config_*.yaml             # Regional configurations
+├── *_grid.py                 # Grid cell generators
 ├── data/
-│   └── waze_madrid.db
-└── exports/
+│   ├── waze_europe.db
+│   ├── waze_americas.db
+│   ├── waze_asia.db
+│   ├── waze_oceania.db
+│   └── waze_africa.db
+└── logs/
+    └── worldwide_collector.log
 ```
 
 ## Privacy & Ethics
@@ -151,3 +188,101 @@ This tool is for **security research and education** - demonstrating privacy ris
 ## License
 
 MIT
+
+---
+
+## Annex: Sample Outputs
+
+### Collector Startup
+
+```
+======================================================================
+WORLDWIDE WAZE COLLECTOR
+Covering: Europe, Americas, Asia, Oceania, Africa
+======================================================================
+  EUROPE     - P1 (cities):  477, P3 (coverage): 1748
+  AMERICAS   - P1 (cities):  693, P3 (coverage): 1692
+  ASIA       - P1 (cities):  684, P3 (coverage): 1517
+  OCEANIA    - P1 (cities):  216, P3 (coverage):  481
+  AFRICA     - P1 (cities):  315, P3 (coverage):  833
+----------------------------------------------------------------------
+  TOTAL      - P1 (cities): 2385, P3 (coverage): 6271
+               Grand total: 8656 grid cells
+======================================================================
+Collection strategy (MULTITHREADED):
+  - All regions scanned in PARALLEL for P1 (city) scans
+  - Full P3 (coverage) scan every 10 cycles (parallel)
+  - 10 second pause between cycles
+======================================================================
+```
+
+### Parallel Scanning Output
+
+```
+==================================================
+CYCLE 1 (PARALLEL MODE)
+==================================================
+Starting parallel P1 scan across 5 regions...
+[  1/315] abidjan                   (CI) ->   4 alerts, +4 new | HAZARD:1, JAM:1, POLICE:1
+[  1/684] abu_dhabi                 (AE) ->   9 alerts, +1 new | JAM:1
+[  1/693] arequipa                  (PE) -> 181 alerts, +6 new | HAZARD:3, POLICE:2, JAM:1
+[  1/216] adelaide                  (AU) ->  38 alerts, +38 new | ROAD_CLOSED:31, POLICE:7
+[  1/477] amsterdam                 (NL) -> 183 alerts, +3 new | HAZARD:3
+  [EUROPE] +4 events, 0 errors
+  [ASIA] +1 events, 0 errors
+  [AFRICA] +9 events, 0 errors
+  [AMERICAS] +7 events, 0 errors
+  [OCEANIA] +190 events, 0 errors
+P1 cycle complete: +211 total events, 0 errors
+```
+
+### API Response: /api/stats
+
+```json
+{
+    "total_events": 28709,
+    "unique_users": 28496,
+    "first_event": "2021-02-28T00:00:00+00:00",
+    "last_event": "2026-01-24T10:36:15+00:00"
+}
+```
+
+### API Response: /api/leaderboard
+
+```json
+[
+    {"rank": 1, "username": "world_3e440399", "count": 3, "last_seen": "2026-01-24T08:09:24+00:00"},
+    {"rank": 2, "username": "world_9886cdb3", "count": 3, "last_seen": "2026-01-24T08:33:22+00:00"},
+    {"rank": 3, "username": "world_9e5e1c59", "count": 3, "last_seen": "2026-01-24T08:24:36+00:00"}
+]
+```
+
+### Live Feed Event (SSE)
+
+```json
+{
+    "type": "new_event",
+    "event": {
+        "id": "europe_12345",
+        "username": "user123",
+        "latitude": 52.3676,
+        "longitude": 4.9041,
+        "timestamp": "2026-01-24T10:30:00+00:00",
+        "report_type": "POLICE",
+        "subtype": "POLICE_VISIBLE",
+        "grid_cell": "amsterdam",
+        "region": "europe"
+    }
+}
+```
+
+### Database Summary
+
+```
+--- DATABASE SUMMARY ---
+  EUROPE    : 8,234 events, 8,102 users
+  AMERICAS  : 6,891 events, 6,754 users
+  ASIA      : 5,432 events, 5,298 users
+  OCEANIA   : 4,567 events, 4,489 users
+  AFRICA    : 3,585 events, 3,453 users
+```
