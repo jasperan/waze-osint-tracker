@@ -5,6 +5,7 @@ import time
 import os
 import signal
 import sys
+import yaml
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
@@ -59,3 +60,89 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
         "collected_at": datetime.now(timezone.utc).isoformat(),
         "grid_cell": grid_cell
     }
+
+
+class Collector:
+    def __init__(self, config_path: str = "config.yaml"):
+        self.config_path = config_path
+        self.config = self._load_config()
+        self.running = False
+        self.pid_file = "collector.pid"
+
+    def _load_config(self) -> Dict[str, Any]:
+        with open(self.config_path) as f:
+            return yaml.safe_load(f)
+
+    def _save_pid(self):
+        with open(self.pid_file, "w") as f:
+            f.write(str(os.getpid()))
+
+    def _remove_pid(self):
+        if os.path.exists(self.pid_file):
+            os.remove(self.pid_file)
+
+    @staticmethod
+    def get_pid() -> Optional[int]:
+        """Get PID of running collector, or None if not running."""
+        if os.path.exists("collector.pid"):
+            with open("collector.pid") as f:
+                pid = int(f.read().strip())
+            # Check if process is actually running
+            try:
+                os.kill(pid, 0)
+                return pid
+            except OSError:
+                return None
+        return None
+
+    def run(self):
+        """Main collection loop."""
+        from database import Database
+        from waze_client import WazeClient
+        from grid import load_grid_cells
+
+        db = Database(self.config["database_path"])
+        client = WazeClient(self.config["waze_server_url"])
+        cells = load_grid_cells(self.config)
+        interval = self.config.get("polling_interval_seconds", 300)
+
+        self.running = True
+        self._save_pid()
+
+        def handle_signal(signum, frame):
+            print("\nShutting down collector...")
+            self.running = False
+
+        signal.signal(signal.SIGINT, handle_signal)
+        signal.signal(signal.SIGTERM, handle_signal)
+
+        print(f"Collector started. Polling every {interval} seconds.")
+        print(f"Grid cells: {[c.name for c in cells]}")
+
+        try:
+            while self.running:
+                for cell in cells:
+                    if not self.running:
+                        break
+
+                    try:
+                        alerts, jams = client.get_traffic_notifications(**cell.to_params())
+                        new_count = 0
+
+                        for alert in alerts:
+                            event = process_alert(alert, cell.name)
+                            if db.insert_event(event):
+                                new_count += 1
+
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] {cell.name}: "
+                              f"{len(alerts)} alerts, {new_count} new")
+
+                    except Exception as e:
+                        print(f"Error collecting {cell.name}: {e}")
+
+                if self.running:
+                    time.sleep(interval)
+        finally:
+            self._remove_pid()
+            db.close()
+            print("Collector stopped.")
