@@ -691,6 +691,12 @@
                         Event Markers
                     </label>
                 </div>
+                <div class="filter-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="auto-follow" checked>
+                        Auto-Follow Events
+                    </label>
+                </div>
             </div>
 
             <!-- Live Feed -->
@@ -1077,6 +1083,24 @@
                     <span class="time">${time}</span>
                 `;
                 item.style.borderLeftColor = color;
+
+                // Auto-follow: teleport to new event location if enabled
+                const autoFollow = document.getElementById('auto-follow');
+                if (autoFollow && autoFollow.checked && e.latitude && e.longitude) {
+                    map.flyTo([e.latitude, e.longitude], 14, { duration: 0.8 });
+
+                    // Add pulse marker to highlight the new event
+                    const pulseMarker = L.circleMarker([e.latitude, e.longitude], {
+                        radius: 15,
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.6,
+                        weight: 3
+                    }).addTo(map);
+
+                    // Animate pulse and remove
+                    setTimeout(() => map.removeLayer(pulseMarker), 2500);
+                }
 
                 // Make event items clickable to navigate to location
                 if (e.latitude && e.longitude) {

@@ -290,7 +290,7 @@ class RegionScanner:
                     style = EVENT_COLORS.get(etype, "info")
                     subtype_str = f" ({subtype})" if subtype else ""
 
-                    # Build styled text
+                    # Build styled text for console
                     line = Text()
                     line.append("  + ", style="success")
                     line.append(f"{etype:12}", style=style)
@@ -299,6 +299,9 @@ class RegionScanner:
                     line.append(subtype_str, style="dim")
                     line.append(f" - {user}", style="dim white")
                     console.print(line)
+
+                    # Also log to file (plain text version)
+                    self.logger.info(f"  + {etype:12} @ {lat:9.5f}, {lon:10.5f}{subtype_str} - {user}")
 
                 # Write status for UI (aggregated)
                 if new_count > 0:
@@ -318,6 +321,7 @@ class RegionScanner:
                 stats["errors"] += 1
                 stats["scanned_cells"].append(cell["name"])
                 console.print(f"  [bold red]ERROR[/bold red] [{idx:3}/{total_cells}] {cell['name']:25} -> {e}")
+                self.logger.error(f"ERROR [{idx:3}/{total_cells}] {cell['name']:25} -> {e}")
 
         return stats
 
@@ -345,16 +349,35 @@ class CLIWorldwideCollector:
     def _setup_logging(self):
         """Set up logging for the collector."""
         Path("logs").mkdir(exist_ok=True)
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s [%(levelname)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S',
-            handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler('logs/cli_collector.log')
-            ]
-        )
+
+        # Create a dedicated logger (don't rely on basicConfig which only works once)
         self.logger = logging.getLogger("cli_collector")
+        self.logger.setLevel(logging.INFO)
+
+        # Clear any existing handlers
+        self.logger.handlers.clear()
+
+        # File handler - always write to log file
+        file_handler = logging.FileHandler('logs/cli_collector.log')
+        file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        self.logger.addHandler(file_handler)
+
+        # Console handler - for interactive mode
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        self.logger.addHandler(console_handler)
+
+        # Prevent propagation to root logger
+        self.logger.propagate = False
+
+    def log(self, msg, level="info"):
+        """Log message to both file and console."""
+        if level == "info":
+            self.logger.info(msg)
+        elif level == "error":
+            self.logger.error(msg)
+        elif level == "warning":
+            self.logger.warning(msg)
 
     def _generate_configs(self):
         """Generate regional configs if they don't exist."""
@@ -515,8 +538,15 @@ class CLIWorldwideCollector:
         self.running = True
         self._save_pid()
 
+        # Log startup
+        self.log(f"Worldwide collector started (PID {os.getpid()})")
+        self.log(f"Scanning {len(self.scanners)} regions: {', '.join(self.scanners.keys())}")
+        if self.web_port:
+            self.log(f"Web UI at http://localhost:{self.web_port}")
+
         def handle_signal(signum, frame):
             console.print("\n[bold yellow]Shutdown signal received...[/bold yellow]")
+            self.log("Shutdown signal received...")
             self.running = False
 
         signal.signal(signal.SIGINT, handle_signal)
@@ -611,6 +641,7 @@ class CLIWorldwideCollector:
                 if total_errors > 0:
                     summary_line.append(f", {total_errors} errors", style="bold red")
                 console.print(summary_line)
+                self.log(f"Cycle {cycle} P1 complete: +{total_events} events, {total_errors} errors")
 
                 if cycle_complete:
                     for region in region_names:
@@ -744,30 +775,96 @@ def logs(lines, follow):
         waze logs -F           # Show recent logs and exit (no follow)
     """
     import subprocess
+    from collector import Collector
 
-    log_file = "logs/cli_collector.log"
+    # Check for running collectors and determine log file
+    worldwide_pid = CLIWorldwideCollector.get_pid()
+    simple_pid = Collector.get_pid()
 
-    # Check if collector is running
-    pid = CLIWorldwideCollector.get_pid()
+    log_file = None
+    pid = None
+    collector_type = None
+
+    if worldwide_pid:
+        pid = worldwide_pid
+        log_file = "logs/cli_collector.log"
+        collector_type = "worldwide"
+    elif simple_pid:
+        pid = simple_pid
+        log_file = "logs/collector.log"
+        collector_type = "madrid"
+
     if not pid:
-        click.echo("No worldwide collector is running.")
-        click.echo("Start one with: waze collect --web")
+        click.echo("No collector is running.")
+        click.echo("Start one with: waze start")
 
-        # Still show logs if file exists
-        if os.path.exists(log_file):
-            click.echo(f"\nShowing last {lines} lines from previous run:\n")
-            click.echo("-" * 60)
+        # Try to find any existing log file (prefer worldwide first)
+        for lf in ["logs/cli_collector.log", "logs/collector.log"]:
+            if os.path.exists(lf):
+                log_file = lf
+                click.echo(f"\nShowing last {lines} lines from previous run ({lf}):\n")
+                click.echo("-" * 60)
+                break
         else:
             return
-
     else:
-        click.echo(f"Connected to collector (PID {pid})")
+        click.echo(f"Connected to {collector_type} collector (PID {pid})")
         click.echo(f"Log file: {log_file}")
         click.echo("-" * 60)
 
-    if not os.path.exists(log_file):
+    if not log_file or not os.path.exists(log_file):
         click.echo(f"Log file not found: {log_file}")
         return
+
+    def colorize_log_line(line):
+        """Colorize a log line using Rich."""
+        import re
+        line = line.rstrip()
+        if not line:
+            return
+
+        # Parse event types and colorize
+        text = Text()
+
+        # Check for event line pattern: "  + TYPE @ coords - user"
+        event_match = re.match(r'^(.*\[INFO\])\s+(\+)\s+(\w+)\s+(@)\s+([\d.-]+,\s*[\d.-]+)(.*)$', line)
+        if event_match:
+            prefix, plus, etype, at, coords, rest = event_match.groups()
+            text.append(prefix + " ", style="dim")
+            text.append(plus + " ", style="bold green")
+            style = EVENT_COLORS.get(etype, "info")
+            text.append(f"{etype:12}", style=style)
+            text.append(f" {at} ", style="dim")
+            text.append(coords, style="cyan")
+            text.append(rest, style="dim")
+            console.print(text)
+            return
+
+        # Check for cycle complete
+        if "cycle complete" in line.lower() or "Cycle" in line:
+            text.append(line, style="bold green")
+            console.print(text)
+            return
+
+        # Check for errors
+        if "[ERROR]" in line or "error" in line.lower():
+            text.append(line, style="bold red")
+            console.print(text)
+            return
+
+        # Check for startup/shutdown
+        if "started" in line.lower() or "Scanning" in line or "Web UI" in line:
+            text.append(line, style="bold cyan")
+            console.print(text)
+            return
+
+        if "shutdown" in line.lower() or "stopped" in line.lower():
+            text.append(line, style="bold yellow")
+            console.print(text)
+            return
+
+        # Default
+        console.print(line, style="dim")
 
     try:
         if follow:
@@ -777,25 +874,88 @@ def logs(lines, follow):
 
             try:
                 for line in process.stdout:
-                    click.echo(line, nl=False)
+                    colorize_log_line(line)
             except KeyboardInterrupt:
                 process.terminate()
-                click.echo("\n\nDisconnected from logs.")
+                console.print("\n[bold yellow]Disconnected from logs.[/bold yellow]")
         else:
             # Just show last N lines
             cmd = ["tail", "-n", str(lines), log_file]
             result = subprocess.run(cmd, capture_output=True, text=True)
-            click.echo(result.stdout)
+            for line in result.stdout.split('\n'):
+                colorize_log_line(line)
 
     except Exception as e:
-        click.echo(f"Error reading logs: {e}")
+        console.print(f"[bold red]Error reading logs: {e}[/bold red]")
 
 
 @cli.command()
+@click.option("--madrid", "-m", is_flag=True, help="Start Madrid-only collector (legacy)")
 @click.option("--europe", is_flag=True, help="Start Europe-wide collector (legacy)")
-def start(europe):
-    """Start the collector daemon (legacy - use 'collect' for worldwide)."""
-    if europe:
+@click.option("--web", "-w", is_flag=True, default=True, help="Start the web UI (default: enabled)")
+@click.option("--no-web", is_flag=True, help="Disable web UI")
+@click.option("--port", "-p", default=5000, help="Web UI port (default: 5000)")
+@click.option("--background", "-b", is_flag=True, help="Run in background (daemonize)")
+@click.option("--region", "-r", multiple=True, help="Specific regions to scan (can be repeated)")
+def start(madrid, europe, web, no_web, port, background, region):
+    """Start the worldwide collector daemon.
+
+    By default starts the worldwide multi-threaded collector with web UI.
+
+    Examples:
+        waze start                    # Start worldwide collector + web UI
+        waze start --background       # Run in background
+        waze start -b                 # Shorthand for background
+        waze start --no-web           # Without web UI
+        waze start -r europe -r asia  # Only specific regions
+        waze start --madrid           # Legacy: Madrid-only collector
+    """
+    # Resolve web flag
+    enable_web = web and not no_web
+    web_port = port if enable_web else None
+
+    if background:
+        import subprocess
+        cmd = [sys.executable, __file__, "start"]
+        if madrid:
+            cmd.append("--madrid")
+        elif europe:
+            cmd.append("--europe")
+        if enable_web:
+            cmd.extend(["--web", "--port", str(port)])
+        else:
+            cmd.append("--no-web")
+        for r in region:
+            cmd.extend(["--region", r])
+        # Launch detached process
+        Path("logs").mkdir(exist_ok=True)
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        click.echo(f"Collector started in background")
+        if enable_web:
+            click.echo(f"Web UI available at http://localhost:{port}")
+        click.echo("Use 'waze logs' to watch output or 'waze stop' to stop")
+        return
+
+    if madrid:
+        # Legacy Madrid-only collector
+        from collector import Collector
+        pid = Collector.get_pid()
+        if pid:
+            click.echo(f"Madrid collector already running (PID {pid})")
+            return
+        click.echo("Starting Madrid collector...")
+        collector = Collector(web_port=web_port)
+        if enable_web:
+            click.echo(f"Web UI will be available at http://localhost:{port}")
+        collector.run()
+    elif europe:
+        # Legacy Europe collector
         from collector_europe import EuropeCollector
         pid = EuropeCollector.get_pid()
         if pid:
@@ -805,27 +965,38 @@ def start(europe):
         collector = EuropeCollector()
         collector.run()
     else:
-        from collector import Collector
-        pid = Collector.get_pid()
+        # Default: Worldwide collector
+        pid = CLIWorldwideCollector.get_pid()
         if pid:
-            click.echo(f"Collector already running (PID {pid})")
+            click.echo(f"Worldwide collector already running (PID {pid})")
+            click.echo(f"Use 'waze logs' to watch live output")
+            click.echo(f"Use 'waze stop' to stop it")
             return
-        click.echo("Starting collector...")
-        collector = Collector()
+
+        selected_regions = list(region) if region else None
+        click.echo("Starting worldwide collector...")
+        if enable_web:
+            click.echo(f"Web UI will be available at http://localhost:{port}")
+        collector = CLIWorldwideCollector(web_port=web_port, regions=selected_regions)
         collector.run()
 
 
 @cli.command()
+@click.option("--madrid", "-m", is_flag=True, help="Stop Madrid-only collector")
 @click.option("--europe", is_flag=True, help="Stop Europe-wide collector")
-@click.option("--worldwide", "-w", is_flag=True, help="Stop worldwide collector")
-def stop(europe, worldwide):
-    """Stop the collector daemon."""
-    if worldwide:
-        pid = CLIWorldwideCollector.get_pid()
+def stop(madrid, europe):
+    """Stop the collector daemon.
+
+    By default stops any running collector (worldwide first, then madrid).
+    """
+    from collector import Collector
+
+    if madrid:
+        pid = Collector.get_pid()
         if not pid:
-            click.echo("Worldwide collector is not running")
+            click.echo("Madrid collector is not running")
             return
-        click.echo(f"Stopping worldwide collector (PID {pid})...")
+        click.echo(f"Stopping Madrid collector (PID {pid})...")
         os.kill(pid, signal.SIGTERM)
         click.echo("Stop signal sent")
     elif europe:
@@ -838,14 +1009,20 @@ def stop(europe, worldwide):
         os.kill(pid, signal.SIGTERM)
         click.echo("Stop signal sent")
     else:
-        from collector import Collector
-        pid = Collector.get_pid()
-        if not pid:
-            click.echo("Collector is not running")
-            return
-        click.echo(f"Stopping collector (PID {pid})...")
-        os.kill(pid, signal.SIGTERM)
-        click.echo("Stop signal sent")
+        # Default: stop worldwide first, then madrid if no worldwide running
+        worldwide_pid = CLIWorldwideCollector.get_pid()
+        madrid_pid = Collector.get_pid()
+
+        if worldwide_pid:
+            click.echo(f"Stopping worldwide collector (PID {worldwide_pid})...")
+            os.kill(worldwide_pid, signal.SIGTERM)
+            click.echo("Stop signal sent")
+        elif madrid_pid:
+            click.echo(f"Stopping Madrid collector (PID {madrid_pid})...")
+            os.kill(madrid_pid, signal.SIGTERM)
+            click.echo("Stop signal sent")
+        else:
+            click.echo("No collector is running")
 
 @cli.command()
 @click.option("--all", "-a", "show_all", is_flag=True, help="Show all regional databases")

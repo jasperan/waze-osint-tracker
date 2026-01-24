@@ -1,5 +1,13 @@
 # Waze Worldwide Logger
 
+[![PyPI version](https://badge.fury.io/py/waze-logs.svg)](https://pypi.org/project/waze-logs/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/badge/GitHub-jasperan-181717?logo=github)](https://github.com/jasperan/waze-logs)
+[![Flask](https://img.shields.io/badge/Flask-Web_UI-000000?logo=flask)](https://flask.palletsprojects.com/)
+[![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite)](https://www.sqlite.org/)
+[![Leaflet](https://img.shields.io/badge/Leaflet-Maps-199900?logo=leaflet)](https://leafletjs.com/)
+
 A worldwide data collection and analysis tool for Waze traffic events. Demonstrates location privacy risks in crowdsourced traffic applications.
 
 ## Overview
@@ -24,40 +32,73 @@ By collecting this data over time, it's possible to build detailed movement prof
 - Python 3.10+
 - ~500MB disk space (for worldwide data)
 
-### 1. Clone and setup
+### 1. Install from PyPI (recommended)
 
 ```bash
-git clone <repo-url>
-cd waze-madrid-logger
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install waze-logs
 ```
 
-### 2. Start worldwide collector
+Or install from source:
 
 ```bash
-# Start the multithreaded worldwide collector
-python collector_worldwide.py
-
-# Or run in background
-nohup python collector_worldwide.py > /dev/null 2>&1 &
+git clone https://github.com/jasperan/waze-logs
+cd waze-logs
+pip install -e .
 ```
 
-### 3. Start web visualization
+This installs the `waze` command globally.
+
+### 2. Start collector with web UI (recommended)
 
 ```bash
-python web/app.py
-# Open http://localhost:5000
+# Start worldwide collector + web visualization (default)
+waze start
+
+# Run in background (daemonized)
+waze start -b
+waze start --background
+
+# Custom port
+waze start --port 8080
+
+# Without web UI
+waze start --no-web
+
+# Open http://localhost:5000 (or your custom port)
 ```
 
-### 4. Explore the data
+### 3. Monitor and control
 
 ```bash
-python cli.py stats           # Overview
-python cli.py recent          # Latest events
-python cli.py users           # Active users
-python cli.py profile <user>  # User movement analysis
+# Watch live logs
+waze logs
+
+# Stop collector
+waze stop
+```
+
+### 4. Alternative: Run components separately
+
+```bash
+# Web UI only (view existing data)
+waze web
+waze web --port 8080
+```
+
+### 5. Explore the data
+
+```bash
+waze status --all    # Worldwide status & stats
+waze summary         # Collection summary
+waze recent          # Latest events
+waze users           # Active users
+waze profile <user>  # User movement analysis
+```
+
+### 6. Stop the collector
+
+```bash
+waze stop            # Stop any running collector
 ```
 
 ## Worldwide Collector
@@ -88,6 +129,7 @@ The web UI provides real-time visualization at `http://localhost:5000`:
 
 - **Live Map:** Leaflet.js heatmap of worldwide events
 - **Real-time Feed:** SSE-powered live event stream
+- **Auto-Follow Events:** Map automatically teleports to new events as they arrive (toggle in Display panel)
 - **Type Filtering:** Filter by POLICE (blue), ACCIDENT (red), JAM (orange), HAZARD (yellow), ROAD_CLOSED (purple)
 - **User Tracking:** Search and filter events by specific username
 - **Time Filters:** Filter by date range or hours ago
@@ -112,34 +154,62 @@ The web UI provides real-time visualization at `http://localhost:5000`:
 ### Collection Control
 
 ```bash
-python cli.py start    # Start collector daemon
-python cli.py stop     # Stop collector daemon
-python cli.py status   # Show status and stats
+# Start worldwide collector (default, includes web UI)
+waze start                        # Start collector + web UI on port 5000
+waze start -b                     # Run in background (daemonized)
+waze start --background           # Same as -b
+waze start --port 8080            # Web UI on custom port
+waze start --no-web               # Collector only, no web UI
+waze start -r europe -r asia      # Collect from specific regions only
+waze start --madrid               # Legacy: Madrid-only collector
+
+# Watch live logs (connect to running collector)
+waze logs                         # Follow live collector output
+waze logs -n 100                  # Show last 100 lines, then follow
+waze logs -F                      # Show recent logs and exit (no follow)
+
+# Stop collectors
+waze stop                         # Stop any running collector
+waze stop --madrid                # Stop Madrid-only collector
+
+# Status
+waze status                       # Basic status
+waze status --all                 # Full status with all regional DBs
+```
+
+### Web Visualization
+
+```bash
+waze web                          # Start web UI only (no collection)
+waze web --port 8080              # Web UI on custom port
 ```
 
 ### Data Exploration
 
 ```bash
-python cli.py stats              # Summary statistics
-python cli.py recent             # Last 20 events
-python cli.py recent -n 50       # Last 50 events
-python cli.py search -u <user>   # Events from user
-python cli.py search -t police   # Filter by type
-python cli.py search --since 2h  # Last 2 hours
+waze summary                      # Worldwide collection summary
+waze stats                        # Summary statistics
+waze daily --all                  # Daily stats from all regions
+waze recent                       # Last 20 events
+waze recent -n 50                 # Last 50 events
+waze search -u <user>             # Events from user
+waze search -t police             # Filter by type
+waze search --since 2h            # Last 2 hours
 ```
 
 ### User Analysis
 
 ```bash
-python cli.py users              # List users by activity
-python cli.py profile <username> # Detailed user profile
+waze users                        # List users by activity
+waze tracked                      # Show tracked users with most events
+waze profile <username>           # Detailed user profile
 ```
 
 ### Export
 
 ```bash
-python cli.py export --format csv      # Export to CSV
-python cli.py export --format geojson  # Export for mapping
+waze export --format csv          # Export to CSV
+waze export --format geojson      # Export for mapping
 ```
 
 ## Configuration
@@ -155,8 +225,9 @@ Regional configs are auto-generated on first run:
 
 ```
 waze-madrid-logger/
-├── cli.py                    # CLI entry point
-├── collector_worldwide.py    # Multithreaded worldwide collector
+├── pyproject.toml            # Package config (installs 'waze' command)
+├── cli.py                    # CLI entry point (with integrated collector + web UI)
+├── collector_worldwide.py    # Standalone multithreaded collector
 ├── database.py               # SQLite operations (WAL mode)
 ├── analysis.py               # Stats and profiling
 ├── waze_client.py            # Direct Waze API client
@@ -164,16 +235,18 @@ waze-madrid-logger/
 │   ├── app.py                # Flask web application
 │   └── templates/
 │       └── index.html        # Map visualization UI
-├── config_*.yaml             # Regional configurations
+├── config_*.yaml             # Regional configurations (auto-generated)
 ├── *_grid.py                 # Grid cell generators
 ├── data/
 │   ├── waze_europe.db
 │   ├── waze_americas.db
 │   ├── waze_asia.db
 │   ├── waze_oceania.db
-│   └── waze_africa.db
+│   ├── waze_africa.db
+│   ├── collector_status.json     # Real-time status for web UI
+│   └── collector_checkpoint.json # Resume checkpoint
 └── logs/
-    └── worldwide_collector.log
+    └── cli_collector.log
 ```
 
 ## Privacy & Ethics
@@ -193,12 +266,21 @@ MIT
 
 ## Annex: Sample Outputs
 
-### Collector Startup
+### CLI Collector Startup (`waze start` or `waze start -b`)
 
 ```
+Collector started in background
+Web UI available at http://localhost:5000
+Use 'waze logs' to watch output or 'waze stop' to stop
+```
+
+### Foreground Mode (`waze start` without `-b`)
+
+```
+Starting worldwide collector...
+Web UI will be available at http://localhost:5000
 ======================================================================
-WORLDWIDE WAZE COLLECTOR
-Covering: Europe, Americas, Asia, Oceania, Africa
+WAZE WORLDWIDE COLLECTOR (CLI)
 ======================================================================
   EUROPE     - P1 (cities):  477, P3 (coverage): 1748
   AMERICAS   - P1 (cities):  693, P3 (coverage): 1692
@@ -213,6 +295,7 @@ Collection strategy (MULTITHREADED):
   - All regions scanned in PARALLEL for P1 (city) scans
   - Full P3 (coverage) scan every 10 cycles (parallel)
   - 10 second pause between cycles
+  - Web UI at http://localhost:5000
 ======================================================================
 ```
 
@@ -276,13 +359,66 @@ P1 cycle complete: +211 total events, 0 errors
 }
 ```
 
-### Database Summary
+### Logs Command (`waze logs`)
 
 ```
---- DATABASE SUMMARY ---
-  EUROPE    : 8,234 events, 8,102 users
-  AMERICAS  : 6,891 events, 6,754 users
-  ASIA      : 5,432 events, 5,298 users
-  OCEANIA   : 4,567 events, 4,489 users
-  AFRICA    : 3,585 events, 3,453 users
+Connected to worldwide collector (PID 2275044)
+Log file: logs/cli_collector.log
+------------------------------------------------------------
+2026-01-24 11:40:45 [INFO]   + POLICE       @  40.41710,   -3.70325 - user_12345
+2026-01-24 11:40:47 [INFO]   + JAM          @  48.85640,    2.35220 (JAM_HEAVY_TRAFFIC) - user_67890
+2026-01-24 11:40:49 [INFO]   + HAZARD       @  51.50740,   -0.12780 (HAZARD_ON_ROAD_OBJECT) - user_54321
+```
+
+### Status Command (`waze status --all`)
+
+```
+=== Collector Status ===
+Worldwide: Running (PID 2275044)
+Madrid:    Stopped
+Europe:    Stopped
+
+=== Regional Database Summary ===
+Region    Events    Users    First       Last
+--------  --------  -------  ----------  ----------
+MADRID    272       227      2025-07-31  2026-01-24
+EUROPE    17,561    17,412   2021-02-28  2026-01-24
+AMERICAS  9,794     9,781    2023-09-21  2026-01-24
+ASIA      3,017     3,017    2023-08-16  2026-01-24
+OCEANIA   996       995      2023-12-31  2026-01-24
+AFRICA    1,120     1,120    2025-06-21  2026-01-24
+
+=== Totals ===
+Total events: 32,760
+Unique users: 32,498
+Time range: 2021-02-28T00:00:00 -> 2026-01-24T11:00:48
+
+By type (all regions):
+  HAZARD         15,958 (48.7%)
+  ROAD_CLOSED    10,107 (30.9%)
+  JAM             3,289 (10.0%)
+  POLICE          3,016 (9.2%)
+  ACCIDENT          360 (1.1%)
+  CHIT_CHAT          30 (0.1%)
+```
+
+### Summary Command (`waze summary`)
+
+```
+=== Worldwide Collection Summary ===
+Total events:    32,760
+Unique users:    32,498
+Days collected:  45
+Grid cells used: 2,156
+First event:     2021-02-28T00:00:00
+Last event:      2026-01-24T11:00:48
+Avg events/day:  728.0
+
+=== By Region ===
+  EUROPE       17,561 events    17,412 users  (53.6%)
+  AMERICAS      9,794 events     9,781 users  (29.9%)
+  ASIA          3,017 events     3,017 users  (9.2%)
+  AFRICA        1,120 events     1,120 users  (3.4%)
+  OCEANIA         996 events       995 users  (3.0%)
+  MADRID          272 events       227 users  (0.8%)
 ```
