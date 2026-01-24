@@ -9,3 +9,4 @@ exports/*.geojson
 .env
 *.log
 docs/plans/
+img/
