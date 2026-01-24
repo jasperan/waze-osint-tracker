@@ -1,0 +1,10 @@
+polling_interval_seconds: 300
+waze_server_url: "http://localhost:8080"
+database_path: "./data/waze_madrid.db"
+
+grid_cells:
+  - name: "gran_via_castellana"
+    lat_top: 40.46
+    lat_bottom: 40.42
+    lon_left: -3.71
+    lon_right: -3.68

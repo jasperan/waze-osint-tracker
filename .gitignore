@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+data/*.db
+lib/*.jar
+exports/*.csv
+exports/*.geojson
+.env
+*.log
+docs/plans/
