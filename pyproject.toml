@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "waze-logs"
-version = "1.2.0"
+version = "1.2.1"
 description = "Worldwide Waze traffic event collection and analysis tool - demonstrates location privacy risks in crowdsourced traffic applications"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -61,7 +61,7 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["cli", "collector", "collector_europe", "collector_worldwide", "database", "analysis", "waze_client"]
+py-modules = ["cli", "collector", "collector_europe", "collector_worldwide", "database", "analysis", "waze_client", "grid"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
