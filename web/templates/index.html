@@ -154,9 +154,48 @@
         /* Type filters */
         .type-filters {
             display: flex;
-            flex-wrap: wrap;
+            flex-direction: column;
             gap: 4px;
             margin-top: 6px;
+        }
+
+        .type-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .type-group-header {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .type-expand {
+            width: 16px;
+            height: 16px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid #444;
+            border-radius: 3px;
+            color: #888;
+            font-size: 0.65rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .type-expand:hover {
+            border-color: #ff6b35;
+            color: #ff6b35;
+        }
+
+        .type-expand.expanded {
+            background: rgba(255, 107, 53, 0.2);
+            border-color: #ff6b35;
+            color: #ff6b35;
         }
 
         .type-chip {
@@ -170,6 +209,7 @@
             display: flex;
             align-items: center;
             gap: 4px;
+            flex: 1;
         }
 
         .type-chip:hover {
@@ -186,6 +226,50 @@
             width: 6px;
             height: 6px;
             border-radius: 50%;
+        }
+
+        .subtypes-container {
+            display: none;
+            flex-direction: column;
+            gap: 2px;
+            margin-left: 20px;
+            margin-top: 2px;
+            padding-left: 8px;
+            border-left: 1px solid #333;
+        }
+
+        .subtypes-container.expanded {
+            display: flex;
+        }
+
+        .subtype-chip {
+            padding: 3px 6px;
+            background: #151515;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .subtype-chip:hover {
+            border-color: #ff6b35;
+        }
+
+        .subtype-chip.active {
+            background: rgba(255, 107, 53, 0.15);
+            border-color: #ff6b35;
+            color: #ff8c5a;
+        }
+
+        .subtype-chip .dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            opacity: 0.7;
         }
 
         /* Buttons */
@@ -631,6 +715,18 @@
                 <h3>Filters</h3>
 
                 <div class="filter-group">
+                    <label>Region</label>
+                    <select id="filter-region" onchange="onFilterChange()">
+                        <option value="">All Regions</option>
+                        <option value="europe">🇪🇺 Europe</option>
+                        <option value="americas">🌎 Americas</option>
+                        <option value="asia">🌏 Asia</option>
+                        <option value="oceania">🌊 Oceania</option>
+                        <option value="africa">🌍 Africa</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
                     <label>Time Range</label>
                     <select id="filter-time" onchange="onFilterChange()">
                         <option value="">All Data</option>
@@ -695,6 +791,15 @@
                     <label class="checkbox-label">
                         <input type="checkbox" id="auto-follow" checked>
                         Auto-Follow Events
+                    </label>
+                    <div class="auto-follow-info" id="auto-follow-info" style="font-size: 0.7rem; color: #666; margin-top: 4px;">
+                        Teleports every 10s
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="sound-enabled">
+                        Sound Notifications
                     </label>
                 </div>
             </div>
@@ -761,10 +866,12 @@
         // Current filter state
         let currentFilters = {
             type: null,
+            subtype: null,
             since: null,
             dateFrom: null,
             dateTo: null,
-            user: null
+            user: null,
+            region: null
         };
 
         // User search debounce timer
@@ -779,6 +886,22 @@
             'ACCIDENT': '#ef4444',     // Red
             'CONSTRUCTION': '#6b7280'  // Gray
         };
+
+        // Auto-follow throttling (teleport max once per 10 seconds)
+        let lastTeleportTime = 0;
+        const TELEPORT_INTERVAL = 10000; // 10 seconds
+        let pendingTeleport = null;
+
+        // Sound notification
+        const notificationSound = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU' + 'tvT18'.repeat(100));
+
+        function playNotificationSound() {
+            const soundEnabled = document.getElementById('sound-enabled');
+            if (soundEnabled && soundEnabled.checked) {
+                notificationSound.volume = 0.3;
+                notificationSound.play().catch(() => {}); // Ignore autoplay errors
+            }
+        }
 
         // Toggle sidebar
         function toggleSidebar() {
@@ -815,15 +938,77 @@
 
                 types.forEach(t => {
                     const color = typeColors[t.type] || '#888';
+                    const hasSubtypes = t.subtypes && t.subtypes.length > 0;
+
+                    // Create type group container
+                    const group = document.createElement('div');
+                    group.className = 'type-group';
+
+                    // Create header with expand button and type chip
+                    const header = document.createElement('div');
+                    header.className = 'type-group-header';
+
+                    // Expand button (only if has subtypes)
+                    if (hasSubtypes) {
+                        const expandBtn = document.createElement('button');
+                        expandBtn.className = 'type-expand';
+                        expandBtn.innerHTML = '▶';
+                        expandBtn.dataset.type = t.type;
+                        expandBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            toggleSubtypes(expandBtn);
+                        };
+                        header.appendChild(expandBtn);
+                    }
+
+                    // Type chip
                     const chip = document.createElement('div');
                     chip.className = 'type-chip';
                     chip.dataset.type = t.type;
-                    chip.innerHTML = `<span class="dot" style="background: ${color}"></span>${t.type} <span style="color:#555">${t.count}</span>`;
+                    chip.innerHTML = `<span class="dot" style="background: ${color}"></span>${t.type} <span style="color:#555">${t.count.toLocaleString()}</span>`;
                     chip.onclick = () => selectType(chip);
-                    container.appendChild(chip);
+                    header.appendChild(chip);
+
+                    group.appendChild(header);
+
+                    // Subtypes container
+                    if (hasSubtypes) {
+                        const subtypesContainer = document.createElement('div');
+                        subtypesContainer.className = 'subtypes-container';
+                        subtypesContainer.dataset.parentType = t.type;
+
+                        t.subtypes.forEach(st => {
+                            const subChip = document.createElement('div');
+                            subChip.className = 'subtype-chip';
+                            subChip.dataset.type = t.type;
+                            subChip.dataset.subtype = st.subtype;
+                            // Format subtype name (remove parent prefix for cleaner display)
+                            const displayName = st.subtype.replace(t.type + '_', '').replace(/_/g, ' ');
+                            subChip.innerHTML = `<span class="dot" style="background: ${color}"></span>${displayName} <span style="color:#444">${st.count.toLocaleString()}</span>`;
+                            subChip.onclick = () => selectSubtype(subChip);
+                            subtypesContainer.appendChild(subChip);
+                        });
+
+                        group.appendChild(subtypesContainer);
+                    }
+
+                    container.appendChild(group);
                 });
             } catch (err) {
                 console.error('Failed to load types:', err);
+            }
+        }
+
+        // Toggle subtypes visibility
+        function toggleSubtypes(expandBtn) {
+            const type = expandBtn.dataset.type;
+            const subtypesContainer = document.querySelector(`.subtypes-container[data-parent-type="${type}"]`);
+
+            if (subtypesContainer) {
+                const isExpanded = subtypesContainer.classList.contains('expanded');
+                subtypesContainer.classList.toggle('expanded');
+                expandBtn.classList.toggle('expanded');
+                expandBtn.innerHTML = isExpanded ? '▶' : '▼';
             }
         }
 
@@ -831,15 +1016,38 @@
         function selectType(chip) {
             const wasActive = chip.classList.contains('active');
 
-            // Deselect all
-            document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
+            // Deselect all types and subtypes
+            document.querySelectorAll('.type-chip, .subtype-chip').forEach(c => c.classList.remove('active'));
 
             // If wasn't active, select this one
             if (!wasActive) {
                 chip.classList.add('active');
                 currentFilters.type = chip.dataset.type;
+                currentFilters.subtype = null;  // Clear subtype when selecting parent type
             } else {
                 currentFilters.type = null;
+                currentFilters.subtype = null;
+            }
+
+            // Apply filters immediately
+            applyFilters();
+        }
+
+        // Select a subtype
+        function selectSubtype(chip) {
+            const wasActive = chip.classList.contains('active');
+
+            // Deselect all types and subtypes
+            document.querySelectorAll('.type-chip, .subtype-chip').forEach(c => c.classList.remove('active'));
+
+            // If wasn't active, select this one
+            if (!wasActive) {
+                chip.classList.add('active');
+                currentFilters.type = chip.dataset.type;  // Set parent type too
+                currentFilters.subtype = chip.dataset.subtype;
+            } else {
+                currentFilters.type = null;
+                currentFilters.subtype = null;
             }
 
             // Apply filters immediately
@@ -849,7 +1057,11 @@
         // Handle filter changes
         function onFilterChange() {
             const timeValue = document.getElementById('filter-time').value;
+            const regionValue = document.getElementById('filter-region').value;
             const dateRangeGroup = document.getElementById('date-range-group');
+
+            // Region filter
+            currentFilters.region = regionValue || null;
 
             if (timeValue === 'custom') {
                 dateRangeGroup.style.display = 'block';
@@ -876,15 +1088,18 @@
 
         // Reset filters
         function resetFilters() {
+            document.getElementById('filter-region').value = '';
             document.getElementById('filter-time').value = '';
             document.getElementById('filter-date-from').value = '';
             document.getElementById('filter-date-to').value = '';
             document.getElementById('date-range-group').style.display = 'none';
             document.getElementById('user-search').value = '';
             document.getElementById('selected-user').style.display = 'none';
-            document.querySelectorAll('.type-chip.active').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.type-chip.active, .subtype-chip.active').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.subtypes-container').forEach(c => c.classList.remove('expanded'));
+            document.querySelectorAll('.type-expand').forEach(c => c.classList.remove('expanded'));
 
-            currentFilters = { type: null, since: null, dateFrom: null, dateTo: null, user: null };
+            currentFilters = { type: null, subtype: null, since: null, dateFrom: null, dateTo: null, user: null, region: null };
             applyFilters();
             loadStats();
         }
@@ -893,10 +1108,12 @@
         function buildFilterUrl(baseUrl) {
             let url = baseUrl + '?';
             if (currentFilters.type) url += `type=${currentFilters.type}&`;
+            if (currentFilters.subtype) url += `subtype=${encodeURIComponent(currentFilters.subtype)}&`;
             if (currentFilters.since) url += `since=${currentFilters.since}&`;
             if (currentFilters.dateFrom) url += `from=${currentFilters.dateFrom}&`;
             if (currentFilters.dateTo) url += `to=${currentFilters.dateTo}&`;
             if (currentFilters.user) url += `user=${encodeURIComponent(currentFilters.user)}&`;
+            if (currentFilters.region) url += `region=${currentFilters.region}&`;
             return url;
         }
 
@@ -1004,8 +1221,14 @@
                 }
 
                 // Update status
+                let filterInfo = '';
+                if (currentFilters.subtype) {
+                    filterInfo = ` (${currentFilters.subtype})`;
+                } else if (currentFilters.type) {
+                    filterInfo = ` (${currentFilters.type})`;
+                }
                 document.getElementById('status-text').textContent =
-                    `Showing ${data.length} locations` + (currentFilters.type ? ` (${currentFilters.type})` : '');
+                    `Showing ${data.length} locations` + filterInfo;
             } catch (err) {
                 console.error('Failed to load heatmap:', err);
             }
@@ -1084,23 +1307,34 @@
                 `;
                 item.style.borderLeftColor = color;
 
-                // Auto-follow: teleport to new event location if enabled
+                // Auto-follow: teleport to new event location (throttled to once per 10 seconds)
                 const autoFollow = document.getElementById('auto-follow');
                 if (autoFollow && autoFollow.checked && e.latitude && e.longitude) {
-                    map.flyTo([e.latitude, e.longitude], 14, { duration: 0.8 });
+                    const now = Date.now();
+                    pendingTeleport = { lat: e.latitude, lng: e.longitude, color: color };
 
-                    // Add pulse marker to highlight the new event
-                    const pulseMarker = L.circleMarker([e.latitude, e.longitude], {
-                        radius: 15,
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.6,
-                        weight: 3
-                    }).addTo(map);
+                    if (now - lastTeleportTime >= TELEPORT_INTERVAL) {
+                        // Teleport immediately
+                        lastTeleportTime = now;
+                        map.flyTo([e.latitude, e.longitude], 14, { duration: 0.8 });
 
-                    // Animate pulse and remove
-                    setTimeout(() => map.removeLayer(pulseMarker), 2500);
+                        // Add pulse marker to highlight the new event
+                        const pulseMarker = L.circleMarker([e.latitude, e.longitude], {
+                            radius: 15,
+                            color: color,
+                            fillColor: color,
+                            fillOpacity: 0.6,
+                            weight: 3
+                        }).addTo(map);
+
+                        // Animate pulse and remove
+                        setTimeout(() => map.removeLayer(pulseMarker), 2500);
+                        pendingTeleport = null;
+                    }
                 }
+
+                // Play sound for new events
+                playNotificationSound();
 
                 // Make event items clickable to navigate to location
                 if (e.latitude && e.longitude) {
@@ -1260,6 +1494,63 @@
             loadStats();
             loadLeaderboard();
         }, 60000);
+
+        // Process pending teleports every 10 seconds
+        setInterval(() => {
+            const autoFollow = document.getElementById('auto-follow');
+            if (autoFollow && autoFollow.checked && pendingTeleport) {
+                const now = Date.now();
+                if (now - lastTeleportTime >= TELEPORT_INTERVAL) {
+                    lastTeleportTime = now;
+                    map.flyTo([pendingTeleport.lat, pendingTeleport.lng], 14, { duration: 0.8 });
+
+                    // Add pulse marker
+                    const pulseMarker = L.circleMarker([pendingTeleport.lat, pendingTeleport.lng], {
+                        radius: 15,
+                        color: pendingTeleport.color,
+                        fillColor: pendingTeleport.color,
+                        fillOpacity: 0.6,
+                        weight: 3
+                    }).addTo(map);
+                    setTimeout(() => map.removeLayer(pulseMarker), 2500);
+
+                    pendingTeleport = null;
+                }
+            }
+        }, 1000);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Don't trigger shortcuts when typing in inputs
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+            switch(e.key.toLowerCase()) {
+                case 'h': // Toggle heatmap
+                    const heatmapCheckbox = document.getElementById('show-heatmap');
+                    heatmapCheckbox.checked = !heatmapCheckbox.checked;
+                    toggleHeatmap();
+                    break;
+                case 'm': // Toggle markers
+                    const markersCheckbox = document.getElementById('show-markers');
+                    markersCheckbox.checked = !markersCheckbox.checked;
+                    toggleMarkers();
+                    break;
+                case 'f': // Toggle auto-follow
+                    const followCheckbox = document.getElementById('auto-follow');
+                    followCheckbox.checked = !followCheckbox.checked;
+                    break;
+                case 's': // Toggle sound
+                    const soundCheckbox = document.getElementById('sound-enabled');
+                    soundCheckbox.checked = !soundCheckbox.checked;
+                    break;
+                case 'r': // Reset filters
+                    resetFilters();
+                    break;
+                case 'escape': // Toggle sidebar
+                    toggleSidebar();
+                    break;
+            }
+        });
     </script>
 </body>
 </html>

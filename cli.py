@@ -209,12 +209,13 @@ def process_alert(alert: dict, grid_cell: str) -> dict:
 class RegionScanner:
     """Scanner for a specific region."""
 
-    def __init__(self, name: str, config_path: str, db, client, logger):
+    def __init__(self, name: str, config_path: str, db, client, logger, threads_per_region: int = 1):
         self.name = name
         self.config_path = config_path
         self.db = db
         self.client = client
         self.logger = logger
+        self.threads_per_region = threads_per_region
         self.cells_by_priority = {}
         self._load_cells()
 
@@ -247,81 +248,146 @@ class RegionScanner:
             skipped = len(cells) - len(remaining_cells)
             console.print(f"  [dim]Resuming: skipping {skipped} cells, {len(remaining_cells)} remaining[/dim]")
 
+        # Use parallel scanning if threads_per_region > 1
+        if self.threads_per_region > 1:
+            return self._scan_parallel(remaining_cells, total_cells, running_flag, on_cell_scanned, stats)
+        else:
+            return self._scan_sequential(remaining_cells, total_cells, running_flag, on_cell_scanned, stats)
+
+    def _scan_cell(self, idx: int, cell: dict, total_cells: int) -> dict:
+        """Scan a single cell and return results."""
+        cell_name = cell["name"]
+        country = cell.get("country", "??")
+        result = {"requests": 1, "errors": 0, "events": 0, "cell_name": cell_name, "new_events": [], "alerts_count": 0}
+
+        try:
+            alerts, _ = self.client.get_traffic_notifications(
+                lat_top=cell["lat_top"],
+                lat_bottom=cell["lat_bottom"],
+                lon_left=cell["lon_left"],
+                lon_right=cell["lon_right"]
+            )
+            result["alerts_count"] = len(alerts)
+
+            for alert in alerts:
+                event = process_alert(alert, cell_name)
+                if self.db.insert_event(event):
+                    result["events"] += 1
+                    result["new_events"].append(event)
+                    self.db.upsert_tracked_user(event["username"], event["timestamp_utc"])
+
+            result["idx"] = idx
+            result["total_cells"] = total_cells
+            result["country"] = country
+
+        except Exception as e:
+            result["errors"] = 1
+            result["error_msg"] = str(e)
+            result["idx"] = idx
+            result["total_cells"] = total_cells
+
+        return result
+
+    def _process_cell_result(self, result: dict, on_cell_scanned: callable):
+        """Process and log cell scan result."""
+        cell_name = result["cell_name"]
+
+        if on_cell_scanned:
+            on_cell_scanned(cell_name)
+
+        if result["errors"] > 0:
+            console.print(f"  [bold red]ERROR[/bold red] [{result['idx']:3}/{result['total_cells']}] {cell_name:25} -> {result.get('error_msg', 'Unknown')}")
+            self.logger.error(f"ERROR [{result['idx']:3}/{result['total_cells']}] {cell_name:25} -> {result.get('error_msg', 'Unknown')}")
+            return
+
+        # Log each new event individually
+        for event in result["new_events"]:
+            lat = event["latitude"]
+            lon = event["longitude"]
+            etype = event["report_type"]
+            subtype = event.get("subtype") or ""
+            user = event["username"][:20]
+
+            style = EVENT_COLORS.get(etype, "info")
+            subtype_str = f" ({subtype})" if subtype else ""
+
+            line = Text()
+            line.append("  + ", style="success")
+            line.append(f"{etype:12}", style=style)
+            line.append(" @ ", style="dim")
+            line.append(f"{lat:9.5f}, {lon:10.5f}", style="cyan")
+            line.append(subtype_str, style="dim")
+            line.append(f" - {user}", style="dim white")
+            console.print(line)
+            self.logger.info(f"  + {etype:12} @ {lat:9.5f}, {lon:10.5f}{subtype_str} - {user}")
+
+        # Write status for UI
+        if result["events"] > 0:
+            event_types = [e["report_type"] for e in result["new_events"]]
+            write_status(
+                region=self.name,
+                cell_name=cell_name,
+                country=result.get("country", "??"),
+                cell_idx=result["idx"],
+                total_cells=result["total_cells"],
+                alerts_count=result["alerts_count"],
+                new_count=result["events"],
+                event_types=event_types
+            )
+
+    def _scan_sequential(self, remaining_cells: list, total_cells: int, running_flag,
+                        on_cell_scanned: callable, stats: dict) -> dict:
+        """Scan cells sequentially."""
         for idx, cell in remaining_cells:
             if not running_flag():
                 break
 
-            try:
-                stats["requests"] += 1
-                cell_name = cell["name"]
-                country = cell.get("country", "??")
+            result = self._scan_cell(idx, cell, total_cells)
+            stats["requests"] += result["requests"]
+            stats["errors"] += result["errors"]
+            stats["events"] += result["events"]
+            stats["scanned_cells"].append(result["cell_name"])
 
-                alerts, _ = self.client.get_traffic_notifications(
-                    lat_top=cell["lat_top"],
-                    lat_bottom=cell["lat_bottom"],
-                    lon_left=cell["lon_left"],
-                    lon_right=cell["lon_right"]
-                )
+            self._process_cell_result(result, on_cell_scanned)
 
-                new_count = 0
-                new_events = []
-                for alert in alerts:
-                    event = process_alert(alert, cell_name)
-                    if self.db.insert_event(event):
-                        new_count += 1
-                        new_events.append(event)
-                        self.db.upsert_tracked_user(event["username"], event["timestamp_utc"])
+        return stats
 
-                stats["events"] += new_count
-                stats["scanned_cells"].append(cell_name)
+    def _scan_parallel(self, remaining_cells: list, total_cells: int, running_flag,
+                      on_cell_scanned: callable, stats: dict) -> dict:
+        """Scan cells in parallel using ThreadPoolExecutor."""
+        import threading
+        stats_lock = threading.Lock()
 
-                if on_cell_scanned:
-                    on_cell_scanned(cell_name)
+        with ThreadPoolExecutor(max_workers=self.threads_per_region) as executor:
+            futures = {}
+            for idx, cell in remaining_cells:
+                if not running_flag():
+                    break
+                future = executor.submit(self._scan_cell, idx, cell, total_cells)
+                futures[future] = (idx, cell)
 
-                # Log each new event individually with coordinates using Rich
-                for event in new_events:
-                    lat = event["latitude"]
-                    lon = event["longitude"]
-                    etype = event["report_type"]
-                    subtype = event.get("subtype") or ""
-                    user = event["username"][:20]
+            for future in as_completed(futures):
+                if not running_flag():
+                    # Cancel remaining futures
+                    for f in futures:
+                        f.cancel()
+                    break
 
-                    # Get color style for event type
-                    style = EVENT_COLORS.get(etype, "info")
-                    subtype_str = f" ({subtype})" if subtype else ""
+                try:
+                    result = future.result()
+                    with stats_lock:
+                        stats["requests"] += result["requests"]
+                        stats["errors"] += result["errors"]
+                        stats["events"] += result["events"]
+                        stats["scanned_cells"].append(result["cell_name"])
 
-                    # Build styled text for console
-                    line = Text()
-                    line.append("  + ", style="success")
-                    line.append(f"{etype:12}", style=style)
-                    line.append(" @ ", style="dim")
-                    line.append(f"{lat:9.5f}, {lon:10.5f}", style="cyan")
-                    line.append(subtype_str, style="dim")
-                    line.append(f" - {user}", style="dim white")
-                    console.print(line)
-
-                    # Also log to file (plain text version)
-                    self.logger.info(f"  + {etype:12} @ {lat:9.5f}, {lon:10.5f}{subtype_str} - {user}")
-
-                # Write status for UI (aggregated)
-                if new_count > 0:
-                    event_types = [e["report_type"] for e in new_events]
-                    write_status(
-                        region=self.name,
-                        cell_name=cell_name,
-                        country=country,
-                        cell_idx=idx,
-                        total_cells=total_cells,
-                        alerts_count=len(alerts),
-                        new_count=new_count,
-                        event_types=event_types
-                    )
-
-            except Exception as e:
-                stats["errors"] += 1
-                stats["scanned_cells"].append(cell["name"])
-                console.print(f"  [bold red]ERROR[/bold red] [{idx:3}/{total_cells}] {cell['name']:25} -> {e}")
-                self.logger.error(f"ERROR [{idx:3}/{total_cells}] {cell['name']:25} -> {e}")
+                    self._process_cell_result(result, on_cell_scanned)
+                except Exception as e:
+                    idx, cell = futures[future]
+                    with stats_lock:
+                        stats["errors"] += 1
+                        stats["scanned_cells"].append(cell["name"])
+                    console.print(f"  [bold red]THREAD ERROR[/bold red] {cell['name']} -> {e}")
 
         return stats
 
@@ -337,10 +403,11 @@ class CLIWorldwideCollector:
         ("africa", "config_africa.yaml", "./data/waze_africa.db"),
     ]
 
-    def __init__(self, web_port=None, regions=None):
+    def __init__(self, web_port=None, regions=None, threads_per_region=1):
         self.running = False
         self.web_port = web_port
         self.selected_regions = regions  # None = all regions
+        self.threads_per_region = threads_per_region
         self.scanners = {}
         self.databases = {}
         self.clients = {}
@@ -482,7 +549,7 @@ class CLIWorldwideCollector:
             db = Database(db_path, check_same_thread=False)
             client = WazeClient()
 
-            scanner = RegionScanner(region_name, config_path, db, client, self.logger)
+            scanner = RegionScanner(region_name, config_path, db, client, self.logger, self.threads_per_region)
             self.scanners[region_name] = scanner
             self.databases[region_name] = db
             self.clients[region_name] = client
@@ -897,7 +964,8 @@ def logs(lines, follow):
 @click.option("--port", "-p", default=5000, help="Web UI port (default: 5000)")
 @click.option("--background", "-b", is_flag=True, help="Run in background (daemonize)")
 @click.option("--region", "-r", multiple=True, help="Specific regions to scan (can be repeated)")
-def start(madrid, europe, web, no_web, port, background, region):
+@click.option("--threads", "-t", default=4, help="Threads per region for parallel cell scanning (default: 4)")
+def start(madrid, europe, web, no_web, port, background, region, threads):
     """Start the worldwide collector daemon.
 
     By default starts the worldwide multi-threaded collector with web UI.
@@ -927,6 +995,7 @@ def start(madrid, europe, web, no_web, port, background, region):
             cmd.append("--no-web")
         for r in region:
             cmd.extend(["--region", r])
+        cmd.extend(["--threads", str(threads)])
         # Launch detached process
         Path("logs").mkdir(exist_ok=True)
         subprocess.Popen(
@@ -974,10 +1043,10 @@ def start(madrid, europe, web, no_web, port, background, region):
             return
 
         selected_regions = list(region) if region else None
-        click.echo("Starting worldwide collector...")
+        click.echo(f"Starting worldwide collector with {threads} threads per region...")
         if enable_web:
             click.echo(f"Web UI will be available at http://localhost:{port}")
-        collector = CLIWorldwideCollector(web_port=web_port, regions=selected_regions)
+        collector = CLIWorldwideCollector(web_port=web_port, regions=selected_regions, threads_per_region=threads)
         collector.run()
 
 

@@ -128,15 +128,21 @@ def api_events():
     """Get events with optional filters from all databases."""
     # Parse query parameters
     event_type = request.args.get("type")
+    event_subtype = request.args.get("subtype")  # filter by subtype
     since = request.args.get("since")  # hours ago
     date_from = request.args.get("from")  # ISO date string
     date_to = request.args.get("to")  # ISO date string
     username = request.args.get("user")  # filter by username
+    region_filter = request.args.get("region")  # filter by region
     limit = request.args.get("limit", 1000, type=int)
 
     all_events = []
 
     for region, db in get_all_dbs():
+        # Skip if region filter is set and doesn't match
+        if region_filter and region != region_filter:
+            db.close()
+            continue
         try:
             query = "SELECT * FROM events WHERE 1=1"
             params = []
@@ -144,6 +150,10 @@ def api_events():
             if event_type:
                 query += " AND report_type = ?"
                 params.append(event_type.upper())
+
+            if event_subtype:
+                query += " AND subtype = ?"
+                params.append(event_subtype)
 
             if username:
                 query += " AND username = ?"
@@ -196,14 +206,20 @@ def api_heatmap():
     """Get events formatted for heatmap layer from all databases."""
     since = request.args.get("since")  # hours ago
     event_type = request.args.get("type")
+    event_subtype = request.args.get("subtype")  # filter by subtype
     date_from = request.args.get("from")  # ISO date string
     date_to = request.args.get("to")  # ISO date string
     username = request.args.get("user")  # filter by username
+    region_filter = request.args.get("region")  # filter by region
 
     # Aggregate heatmap data from all databases
     location_weights = {}
 
     for region, db in get_all_dbs():
+        # Skip if region filter is set and doesn't match
+        if region_filter and region != region_filter:
+            db.close()
+            continue
         try:
             query = "SELECT latitude, longitude, COUNT(*) as weight FROM events WHERE 1=1"
             params = []
@@ -211,6 +227,10 @@ def api_heatmap():
             if event_type:
                 query += " AND report_type = ?"
                 params.append(event_type.upper())
+
+            if event_subtype:
+                query += " AND subtype = ?"
+                params.append(event_subtype)
 
             if username:
                 query += " AND username = ?"
@@ -267,26 +287,48 @@ def api_user(username):
 
 @app.route("/api/types")
 def api_types():
-    """Get list of event types with counts from all databases."""
+    """Get list of event types with counts and subtypes from all databases."""
     type_counts = {}
+    subtype_counts = {}  # {parent_type: {subtype: count}}
 
     for region, db in get_all_dbs():
         try:
             rows = db.execute("""
-                SELECT report_type, COUNT(*) as count
+                SELECT report_type, subtype, COUNT(*) as count
                 FROM events
-                GROUP BY report_type
+                GROUP BY report_type, subtype
             """).fetchall()
 
             for row in rows:
                 t = row["report_type"]
-                type_counts[t] = type_counts.get(t, 0) + row["count"]
+                st = row["subtype"] or ""
+                count = row["count"]
+
+                # Aggregate total for type
+                type_counts[t] = type_counts.get(t, 0) + count
+
+                # Aggregate subtype counts
+                if t not in subtype_counts:
+                    subtype_counts[t] = {}
+                if st:  # Only track non-empty subtypes
+                    subtype_counts[t][st] = subtype_counts[t].get(st, 0) + count
 
             db.close()
         except Exception as e:
             print(f"Types error for {region}: {e}")
 
-    types = [{"type": t, "count": c} for t, c in sorted(type_counts.items(), key=lambda x: -x[1])]
+    # Build response with subtypes included
+    types = []
+    for t, c in sorted(type_counts.items(), key=lambda x: -x[1]):
+        type_data = {"type": t, "count": c}
+        if t in subtype_counts and subtype_counts[t]:
+            # Sort subtypes by count descending
+            type_data["subtypes"] = [
+                {"subtype": st, "count": sc}
+                for st, sc in sorted(subtype_counts[t].items(), key=lambda x: -x[1])
+            ]
+        types.append(type_data)
+
     return jsonify(types)
 
 
