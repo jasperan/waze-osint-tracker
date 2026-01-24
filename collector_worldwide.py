@@ -17,7 +17,9 @@ from pathlib import Path
 
 # Status file for real-time UI updates
 STATUS_FILE = "./data/collector_status.json"
+CHECKPOINT_FILE = "./data/collector_checkpoint.json"
 status_lock = threading.Lock()
+checkpoint_lock = threading.Lock()
 
 
 def write_status(region: str, cell_name: str, country: str, cell_idx: int, total_cells: int,
@@ -41,6 +43,42 @@ def write_status(region: str, cell_name: str, country: str, cell_idx: int, total
                 json.dump(status, f)
     except Exception:
         pass  # Don't crash on status write failures
+
+
+def load_checkpoint() -> Dict[str, Any]:
+    """Load checkpoint from file. Returns empty dict if no checkpoint exists."""
+    try:
+        if os.path.exists(CHECKPOINT_FILE):
+            with open(CHECKPOINT_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"cycle": 0, "scanned": {}}
+
+
+def save_checkpoint(cycle: int, scanned: Dict[str, List[str]]):
+    """Save checkpoint to file (thread-safe)."""
+    try:
+        checkpoint = {
+            "cycle": cycle,
+            "scanned": scanned,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        with checkpoint_lock:
+            with open(CHECKPOINT_FILE, "w") as f:
+                json.dump(checkpoint, f)
+    except Exception:
+        pass
+
+
+def clear_checkpoint():
+    """Clear checkpoint file when cycle completes."""
+    try:
+        if os.path.exists(CHECKPOINT_FILE):
+            os.remove(CHECKPOINT_FILE)
+    except Exception:
+        pass
+
 
 # Set up logging
 logging.basicConfig(
@@ -114,13 +152,30 @@ class RegionScanner:
     def get_cell_counts(self) -> Dict[int, int]:
         return {p: len(cells) for p, cells in self.cells_by_priority.items()}
 
-    def scan(self, priority: int, running_flag) -> Dict[str, int]:
-        """Scan cells of given priority."""
-        cells = self.cells_by_priority.get(priority, [])
-        stats = {"requests": 0, "errors": 0, "events": 0, "cells": len(cells)}
-        total_cells = len(cells)
+    def scan(self, priority: int, running_flag, already_scanned: set = None,
+             on_cell_scanned: callable = None) -> Dict[str, Any]:
+        """Scan cells of given priority, skipping already-scanned cells.
 
-        for idx, cell in enumerate(cells, 1):
+        Args:
+            priority: Priority level to scan (1 or 3)
+            running_flag: Callable that returns False to stop scanning
+            already_scanned: Set of cell names to skip
+            on_cell_scanned: Callback called with cell_name after each cell is scanned
+        """
+        cells = self.cells_by_priority.get(priority, [])
+        stats = {"requests": 0, "errors": 0, "events": 0, "cells": len(cells), "scanned_cells": []}
+        total_cells = len(cells)
+        already_scanned = already_scanned or set()
+
+        # Filter out already-scanned cells
+        remaining_cells = [(idx, cell) for idx, cell in enumerate(cells, 1)
+                          if cell["name"] not in already_scanned]
+
+        if len(remaining_cells) < len(cells):
+            skipped = len(cells) - len(remaining_cells)
+            self.logger.info(f"Resuming: skipping {skipped} already-scanned cells, {len(remaining_cells)} remaining")
+
+        for idx, cell in remaining_cells:
             if not running_flag():
                 break
 
@@ -146,6 +201,11 @@ class RegionScanner:
                         self.db.upsert_tracked_user(event["username"], event["timestamp_utc"])
 
                 stats["events"] += new_count
+                stats["scanned_cells"].append(cell_name)
+
+                # Notify callback that cell was scanned (for checkpoint saving)
+                if on_cell_scanned:
+                    on_cell_scanned(cell_name)
 
                 # Only log and write status when there are alerts or new events
                 if len(alerts) > 0 or new_count > 0:
@@ -172,6 +232,7 @@ class RegionScanner:
 
             except Exception as e:
                 stats["errors"] += 1
+                stats["scanned_cells"].append(cell["name"])  # Mark as scanned even on error
                 self.logger.error(f"[{idx:3}/{total_cells}] {cell['name']:25} -> ERROR: {e}")
 
         return stats
@@ -295,18 +356,36 @@ class WorldwideCollector:
         signal.signal(signal.SIGTERM, handle_signal)
 
         region_names = list(self.scanners.keys())
-        cycle = 0
 
-        def scan_region(region_name: str, priority: int, today: str) -> Dict[str, Any]:
+        # Load checkpoint to resume from where we left off
+        checkpoint = load_checkpoint()
+        cycle = checkpoint.get("cycle", 0)
+        scanned_cells = checkpoint.get("scanned", {})
+
+        if cycle > 0:
+            logger.info(f"Resuming from checkpoint: cycle {cycle}")
+            for key, cells in scanned_cells.items():
+                logger.info(f"  {key}: {len(cells)} cells already scanned")
+
+        def scan_region(region_name: str, priority: int, today: str, already_scanned: set,
+                        checkpoint_key: str) -> Dict[str, Any]:
             """Scan a single region (runs in thread)."""
             scanner = self.scanners[region_name]
             db = self.databases[region_name]
 
             p_count = scanner.get_cell_counts().get(priority, 0)
             if p_count == 0:
-                return {"region": region_name, "events": 0, "errors": 0, "requests": 0, "cells": 0}
+                return {"region": region_name, "events": 0, "errors": 0, "requests": 0, "cells": 0, "scanned_cells": []}
 
-            stats = scanner.scan(priority, lambda: self.running)
+            def on_cell_scanned(cell_name):
+                """Callback to save checkpoint after each cell (thread-safe)."""
+                with checkpoint_lock:
+                    if checkpoint_key not in scanned_cells:
+                        scanned_cells[checkpoint_key] = []
+                    scanned_cells[checkpoint_key].append(cell_name)
+                save_checkpoint(cycle, scanned_cells)
+
+            stats = scanner.scan(priority, lambda: self.running, already_scanned, on_cell_scanned)
 
             # Update daily stats (thread-safe - SQLite handles this)
             db.update_daily_stats(
@@ -332,25 +411,37 @@ class WorldwideCollector:
                 logger.info(f"Starting parallel P1 scan across {len(region_names)} regions...")
                 total_events = 0
                 total_errors = 0
+                cycle_complete = True
 
                 with ThreadPoolExecutor(max_workers=len(region_names)) as executor:
-                    futures = {
-                        executor.submit(scan_region, region, 1, today): region
-                        for region in region_names
-                    }
+                    futures = {}
+                    for region in region_names:
+                        key = f"{region}_p1"
+                        already_scanned = set(scanned_cells.get(key, []))
+                        futures[executor.submit(scan_region, region, 1, today, already_scanned, key)] = (region, key)
 
                     for future in as_completed(futures):
-                        region = futures[future]
+                        region, key = futures[future]
                         try:
                             result = future.result()
                             total_events += result["events"]
                             total_errors += result["errors"]
+
+                            # Checkpoint is saved per-cell by callback, no need to save here
+
                             if result["events"] > 0 or result["errors"] > 0:
                                 logger.info(f"  [{region.upper()}] +{result['events']} events, {result['errors']} errors")
                         except Exception as e:
                             logger.error(f"  [{region.upper()}] Thread error: {e}")
+                            cycle_complete = False
 
                 logger.info(f"P1 cycle complete: +{total_events} total events, {total_errors} errors")
+
+                # Clear P1 checkpoint data after successful cycle
+                if cycle_complete:
+                    for region in region_names:
+                        scanned_cells.pop(f"{region}_p1", None)
+                    save_checkpoint(cycle, scanned_cells)
 
                 # Full coverage scan every 10 cycles (also parallel)
                 if cycle % 10 == 0 and self.running:
@@ -358,22 +449,31 @@ class WorldwideCollector:
                     total_p3_events = 0
 
                     with ThreadPoolExecutor(max_workers=len(region_names)) as executor:
-                        futures = {
-                            executor.submit(scan_region, region, 3, today): region
-                            for region in region_names
-                        }
+                        futures = {}
+                        for region in region_names:
+                            key = f"{region}_p3"
+                            already_scanned = set(scanned_cells.get(key, []))
+                            futures[executor.submit(scan_region, region, 3, today, already_scanned, key)] = (region, key)
 
                         for future in as_completed(futures):
-                            region = futures[future]
+                            region, key = futures[future]
                             try:
                                 result = future.result()
                                 total_p3_events += result["events"]
+
+                                # Checkpoint is saved per-cell by callback, no need to save here
+
                                 if result["events"] > 0:
                                     logger.info(f"  [{region.upper()}] +{result['events']} events")
                             except Exception as e:
                                 logger.error(f"  [{region.upper()}] Thread error: {e}")
 
                     logger.info(f"P3 coverage complete: +{total_p3_events} total events")
+
+                    # Clear P3 checkpoint data after successful coverage scan
+                    for region in region_names:
+                        scanned_cells.pop(f"{region}_p3", None)
+                    save_checkpoint(cycle, scanned_cells)
 
                 # Print summary every 5 cycles
                 if cycle % 5 == 0:
