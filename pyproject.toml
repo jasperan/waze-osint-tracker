@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "waze-logs"
-version = "1.2.1"
+version = "1.2.2"
 description = "Worldwide Waze traffic event collection and analysis tool - demonstrates location privacy risks in crowdsourced traffic applications"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -48,9 +48,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jasperan/waze-logs"
-Repository = "https://github.com/jasperan/waze-logs"
-Issues = "https://github.com/jasperan/waze-logs/issues"
+Homepage = "https://github.com/jasperan/waze-osint-tracker"
+Repository = "https://github.com/jasperan/waze-osint-tracker"
+Issues = "https://github.com/jasperan/waze-osint-tracker/issues"
 
 [project.scripts]
 waze = "cli:cli"
