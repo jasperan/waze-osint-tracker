@@ -2,7 +2,7 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
-data/*.db
+data/
 lib/*.jar
 exports/*.csv
 exports/*.geojson
