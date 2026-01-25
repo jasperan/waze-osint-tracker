@@ -607,10 +607,6 @@ class CLIWorldwideCollector:
 
         # Log startup
         self.log(f"Worldwide collector started (PID {os.getpid()})")
-        self.log(f"Scanning {len(self.scanners)} regions: {', '.join(self.scanners.keys())}")
-        if self.web_port:
-            self.log(f"Web UI at http://localhost:{self.web_port}")
-
         def handle_signal(signum, frame):
             console.print("\n[bold yellow]Shutdown signal received...[/bold yellow]")
             self.log("Shutdown signal received...")
@@ -620,6 +616,16 @@ class CLIWorldwideCollector:
         signal.signal(signal.SIGTERM, handle_signal)
 
         region_names = list(self.scanners.keys())
+
+        if not region_names:
+            console.print("[bold red]Error:[/bold red] No regions configured. Add regions using 'waze region add <name>'")
+            self.log("Fatal error: no regions configured")
+            return
+
+        # Log startup info after confirming we have regions
+        self.log(f"Scanning {len(region_names)} regions: {', '.join(region_names)}")
+        if self.web_port:
+            self.log(f"Web UI at http://localhost:{self.web_port}")
 
         # Load checkpoint
         checkpoint = load_checkpoint()

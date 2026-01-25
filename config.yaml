@@ -1,10 +1,133 @@
-polling_interval_seconds: 300
+polling_interval_seconds: 120
 waze_server_url: "http://localhost:8080"
 database_path: "./data/waze_madrid.db"
 
+# Grid cells covering all of Madrid metropolitan area
+# Each cell is ~0.04 x 0.04 degrees (~4km x 4km)
 grid_cells:
+  # Northern Madrid
+  - name: "chamartin_norte"
+    lat_top: 40.50
+    lat_bottom: 40.46
+    lon_left: -3.72
+    lon_right: -3.68
+
+  - name: "hortaleza"
+    lat_top: 40.50
+    lat_bottom: 40.46
+    lon_left: -3.68
+    lon_right: -3.64
+
+  - name: "barajas"
+    lat_top: 40.50
+    lat_bottom: 40.46
+    lon_left: -3.64
+    lon_right: -3.58
+
+  # Central-North Madrid
+  - name: "tetuan_chamartin"
+    lat_top: 40.46
+    lat_bottom: 40.42
+    lon_left: -3.72
+    lon_right: -3.68
+
   - name: "gran_via_castellana"
     lat_top: 40.46
     lat_bottom: 40.42
-    lon_left: -3.71
+    lon_left: -3.68
+    lon_right: -3.64
+
+  - name: "salamanca_goya"
+    lat_top: 40.46
+    lat_bottom: 40.42
+    lon_left: -3.64
+    lon_right: -3.60
+
+  # Central Madrid
+  - name: "moncloa_arguelles"
+    lat_top: 40.42
+    lat_bottom: 40.38
+    lon_left: -3.76
+    lon_right: -3.72
+
+  - name: "centro_malasana"
+    lat_top: 40.42
+    lat_bottom: 40.38
+    lon_left: -3.72
     lon_right: -3.68
+
+  - name: "retiro_atocha"
+    lat_top: 40.42
+    lat_bottom: 40.38
+    lon_left: -3.68
+    lon_right: -3.64
+
+  - name: "moratalaz"
+    lat_top: 40.42
+    lat_bottom: 40.38
+    lon_left: -3.64
+    lon_right: -3.60
+
+  # Southern-Central Madrid
+  - name: "carabanchel"
+    lat_top: 40.38
+    lat_bottom: 40.34
+    lon_left: -3.76
+    lon_right: -3.72
+
+  - name: "usera_villaverde"
+    lat_top: 40.38
+    lat_bottom: 40.34
+    lon_left: -3.72
+    lon_right: -3.68
+
+  - name: "vallecas"
+    lat_top: 40.38
+    lat_bottom: 40.34
+    lon_left: -3.68
+    lon_right: -3.64
+
+  - name: "vicalvaro"
+    lat_top: 40.38
+    lat_bottom: 40.34
+    lon_left: -3.64
+    lon_right: -3.60
+
+  # Western outskirts
+  - name: "pozuelo"
+    lat_top: 40.46
+    lat_bottom: 40.42
+    lon_left: -3.82
+    lon_right: -3.76
+
+  - name: "majadahonda"
+    lat_top: 40.50
+    lat_bottom: 40.46
+    lon_left: -3.82
+    lon_right: -3.76
+
+  # Eastern outskirts
+  - name: "coslada"
+    lat_top: 40.46
+    lat_bottom: 40.42
+    lon_left: -3.58
+    lon_right: -3.52
+
+  - name: "san_fernando"
+    lat_top: 40.42
+    lat_bottom: 40.38
+    lon_left: -3.58
+    lon_right: -3.52
+
+  # Southern outskirts
+  - name: "getafe"
+    lat_top: 40.34
+    lat_bottom: 40.30
+    lon_left: -3.76
+    lon_right: -3.70
+
+  - name: "leganes"
+    lat_top: 40.34
+    lat_bottom: 40.30
+    lon_left: -3.82
+    lon_right: -3.76

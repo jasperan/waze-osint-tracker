@@ -1,0 +1,25 @@
+[Unit]
+Description=Waze Europe Data Collector
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/git/waze-madrid-logger
+ExecStart=/home/ubuntu/miniconda3/bin/python /home/ubuntu/git/waze-madrid-logger/collector_europe.py
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/ubuntu/git/waze-madrid-logger/logs/collector.log
+StandardError=append:/home/ubuntu/git/waze-madrid-logger/logs/collector.log
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Resource limits
+MemoryMax=1G
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

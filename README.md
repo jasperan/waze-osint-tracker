@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/waze-logs.svg)](https://pypi.org/project/waze-logs/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-jasperan-181717?logo=github)](https://github.com/jasperan/waze-logs)
+[![GitHub](https://img.shields.io/badge/GitHub-jasperan-181717?logo=github)](https://github.com/jasperan/waze-osint-tracker)
 [![Flask](https://img.shields.io/badge/Flask-Web_UI-000000?logo=flask)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite)](https://www.sqlite.org/)
 [![Leaflet](https://img.shields.io/badge/Leaflet-Maps-199900?logo=leaflet)](https://leafletjs.com/)
@@ -41,8 +41,8 @@ pip install waze-logs
 Or install from source:
 
 ```bash
-git clone https://github.com/jasperan/waze-logs
-cd waze-logs
+git clone https://github.com/jasperan/waze-osint-tracker
+cd waze-osint-tracker
 pip install -e .
 ```
 
@@ -124,6 +124,12 @@ The worldwide collector scans 5 continents in parallel using multithreading:
 ## Web Visualization UI
 
 The web UI provides real-time visualization at `http://localhost:5000`:
+
+![Web UI Main View](img/web-ui-main.png)
+*Dark-themed interface with filters, live feed, and interactive map*
+
+![Web UI Live Events](img/web-ui-event.png)
+*Click any event in the live feed to fly to its location on the map*
 
 ### Features
 

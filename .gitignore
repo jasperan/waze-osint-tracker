@@ -9,4 +9,18 @@ exports/*.geojson
 .env
 *.log
 docs/plans/
-img/
+
+# Claude Code / IDE files
+CLAUDE.md
+.claude/
+.serena/
+.playwright-mcp/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Benchmarks and temp files
+benchmark_results.txt
+*.pid
