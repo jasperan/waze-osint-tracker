@@ -3,10 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Waze Global Traffic Tracker</title>
+    <title>Global Traffic Intelligence</title>
 
     <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%230a0a0f'/><circle cx='50' cy='50' r='25' fill='none' stroke='%2300d4ff' stroke-width='3'/><circle cx='50' cy='50' r='8' fill='%2300d4ff'/></svg>">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -18,10 +23,33 @@
             box-sizing: border-box;
         }
 
+        :root {
+            --bg-deep: #0a0a0f;
+            --bg-surface: #12121a;
+            --bg-elevated: #1a1a24;
+            --primary: #00d4ff;
+            --primary-dim: #0099bb;
+            --secondary: #8b5cf6;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --accent-yellow: #facc15;
+            --accent-orange: #f97316;
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-highlight: rgba(0, 212, 255, 0.3);
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glow-primary: 0 0 20px rgba(0, 212, 255, 0.15);
+            --glow-secondary: 0 0 20px rgba(139, 92, 246, 0.15);
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #eee;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            line-height: 1.5;
         }
 
         .container {
@@ -31,20 +59,21 @@
 
         /* Sidebar */
         .sidebar {
-            width: 280px;
-            background: rgba(10, 10, 10, 0.95);
-            padding: 15px;
+            width: 300px;
+            background: var(--bg-surface);
+            padding: 20px 16px;
             overflow-y: auto;
-            border-right: 1px solid #1a1a1a;
+            border-right: 1px solid var(--border);
             transition: transform 0.3s ease, width 0.3s ease;
             position: relative;
             z-index: 1001;
             display: flex;
             flex-direction: column;
+            gap: 16px;
         }
 
         .sidebar.collapsed {
-            transform: translateX(-280px);
+            transform: translateX(-300px);
             width: 0;
             padding: 0;
             overflow: hidden;
@@ -52,22 +81,27 @@
 
         .sidebar-toggle {
             position: absolute;
-            left: 280px;
-            top: 15px;
-            width: 36px;
-            height: 36px;
-            background: rgba(10, 10, 10, 0.9);
-            border: 1px solid #333;
+            left: 300px;
+            top: 20px;
+            width: 40px;
+            height: 40px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
             border-left: none;
-            border-radius: 0 6px 6px 0;
-            color: #ff6b35;
+            border-radius: 0 8px 8px 0;
+            color: var(--primary);
             cursor: pointer;
             z-index: 1002;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.1rem;
-            transition: left 0.3s ease;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
         }
 
         .sidebar.collapsed + .sidebar-toggle,
@@ -75,111 +109,158 @@
             left: 0;
         }
 
-        .sidebar h1 {
-            font-size: 1.1rem;
-            color: #ff6b35;
-            margin-bottom: 3px;
-            font-weight: 600;
+        /* Header */
+        .sidebar-header {
+            margin-bottom: 4px;
         }
 
-        .sidebar .subtitle {
+        .sidebar-header h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+        }
+
+        .sidebar-header .subtitle {
             font-size: 0.7rem;
-            color: #555;
-            margin-bottom: 15px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.1em;
+            margin-top: 2px;
         }
 
         /* Panels */
         .panel {
-            background: rgba(255, 107, 53, 0.03);
-            border: 1px solid rgba(255, 107, 53, 0.15);
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 12px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 16px;
+            backdrop-filter: blur(10px);
         }
 
         .panel h3 {
-            font-size: 0.7rem;
-            color: #ff6b35;
-            margin-bottom: 10px;
+            font-size: 0.65rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--primary);
+            margin-bottom: 12px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.15em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel h3::before {
+            content: '';
+            width: 4px;
+            height: 4px;
+            background: var(--primary);
+            border-radius: 50%;
+            box-shadow: var(--glow-primary);
         }
 
         .stat-row {
             display: flex;
             justify-content: space-between;
-            padding: 5px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-            font-size: 0.8rem;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
         }
 
         .stat-row:last-child {
             border-bottom: none;
+            padding-bottom: 0;
         }
 
-        .stat-label { color: #666; }
-        .stat-value { font-weight: 600; color: #ff8c5a; }
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 0.85rem;
+        }
 
         /* Filters */
         .filter-group {
-            margin-bottom: 10px;
+            margin-bottom: 12px;
+        }
+
+        .filter-group:last-child {
+            margin-bottom: 0;
         }
 
         .filter-group label {
             display: block;
             font-size: 0.75rem;
-            color: #666;
-            margin-bottom: 4px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 500;
         }
 
         .filter-group select,
         .filter-group input[type="date"] {
             width: 100%;
-            padding: 6px 8px;
-            background: #151515;
-            border: 1px solid #333;
-            border-radius: 4px;
-            color: #eee;
-            font-size: 0.8rem;
+            padding: 10px 12px;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .filter-group select:hover,
+        .filter-group input:hover {
+            border-color: var(--border-highlight);
         }
 
         .filter-group select:focus,
         .filter-group input:focus {
             outline: none;
-            border-color: #ff6b35;
+            border-color: var(--primary);
+            box-shadow: var(--glow-primary);
         }
 
         /* Type filters */
         .type-filters {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            margin-top: 6px;
+            gap: 6px;
+            margin-top: 8px;
         }
 
         .type-group {
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 4px;
         }
 
         .type-group-header {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
         }
 
         .type-expand {
-            width: 16px;
-            height: 16px;
+            width: 20px;
+            height: 20px;
             padding: 0;
             background: transparent;
-            border: 1px solid #444;
-            border-radius: 3px;
-            color: #888;
-            font-size: 0.65rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-muted);
+            font-size: 0.6rem;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -188,54 +269,63 @@
         }
 
         .type-expand:hover {
-            border-color: #ff6b35;
-            color: #ff6b35;
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .type-expand.expanded {
-            background: rgba(255, 107, 53, 0.2);
-            border-color: #ff6b35;
-            color: #ff6b35;
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .type-chip {
-            padding: 4px 8px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 12px;
-            font-size: 0.7rem;
+            padding: 8px 12px;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.8rem;
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 8px;
             flex: 1;
         }
 
         .type-chip:hover {
-            border-color: #ff6b35;
+            border-color: var(--border-highlight);
+            background: var(--bg-elevated);
         }
 
         .type-chip.active {
-            background: rgba(255, 107, 53, 0.2);
-            border-color: #ff6b35;
-            color: #ff8c5a;
+            background: rgba(0, 212, 255, 0.08);
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .type-chip .dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .type-chip .count {
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            margin-left: auto;
         }
 
         .subtypes-container {
             display: none;
             flex-direction: column;
-            gap: 2px;
-            margin-left: 20px;
-            margin-top: 2px;
-            padding-left: 8px;
-            border-left: 1px solid #333;
+            gap: 4px;
+            margin-left: 26px;
+            margin-top: 4px;
+            padding-left: 12px;
+            border-left: 1px solid var(--border);
         }
 
         .subtypes-container.expanded {
@@ -243,65 +333,80 @@
         }
 
         .subtype-chip {
-            padding: 3px 6px;
-            background: #151515;
-            border: 1px solid #2a2a2a;
-            border-radius: 10px;
-            font-size: 0.65rem;
+            padding: 6px 10px;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.75rem;
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
             align-items: center;
-            gap: 3px;
+            gap: 6px;
         }
 
         .subtype-chip:hover {
-            border-color: #ff6b35;
+            border-color: var(--border-highlight);
         }
 
         .subtype-chip.active {
-            background: rgba(255, 107, 53, 0.15);
-            border-color: #ff6b35;
-            color: #ff8c5a;
+            background: rgba(0, 212, 255, 0.08);
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .subtype-chip .dot {
-            width: 5px;
-            height: 5px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            opacity: 0.7;
+            opacity: 0.8;
+        }
+
+        .subtype-chip .count {
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            margin-left: auto;
         }
 
         /* Buttons */
         .btn {
-            padding: 6px 12px;
-            background: #ff6b35;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dim));
             border: none;
-            border-radius: 4px;
-            color: #0a0a0a;
+            border-radius: 8px;
+            color: var(--bg-deep);
             cursor: pointer;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             font-weight: 600;
-            transition: background 0.2s;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+            box-shadow: var(--glow-primary);
         }
 
-        .btn:hover { background: #ff8c5a; }
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+        }
 
         .btn-small {
-            padding: 4px 8px;
-            font-size: 0.7rem;
+            padding: 8px 12px;
+            font-size: 0.75rem;
         }
 
         .btn-ghost {
             background: transparent;
-            border: 1px solid #333;
-            color: #888;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            box-shadow: none;
         }
 
         .btn-ghost:hover {
-            border-color: #ff6b35;
-            color: #ff6b35;
-            background: rgba(255, 107, 53, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+            background: rgba(0, 212, 255, 0.05);
+            transform: none;
+            box-shadow: none;
         }
 
         /* Checkbox */
@@ -309,20 +414,29 @@
             display: flex;
             align-items: center;
             cursor: pointer;
-            font-size: 0.8rem;
-            color: #888;
-            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            gap: 10px;
+            padding: 6px 0;
+            transition: color 0.2s;
+        }
+
+        .checkbox-label:hover {
+            color: var(--text-primary);
         }
 
         .checkbox-label input {
-            accent-color: #ff6b35;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            cursor: pointer;
         }
 
         /* Live Feed */
         .live-feed {
             flex: 1;
-            min-height: 150px;
-            max-height: 250px;
+            min-height: 180px;
+            max-height: 280px;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -332,7 +446,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
 
         .feed-header h3 {
@@ -342,46 +456,52 @@
         .live-indicator {
             display: flex;
             align-items: center;
-            gap: 4px;
-            font-size: 0.65rem;
-            color: #666;
+            gap: 6px;
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
         }
 
         .live-dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            background: #ff6b35;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
             animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
         }
 
         .feed-items {
             flex: 1;
             overflow-y: auto;
-            font-size: 0.7rem;
+            font-size: 0.8rem;
         }
 
         .feed-item {
-            padding: 6px 8px;
-            margin-bottom: 4px;
-            background: rgba(255, 107, 53, 0.05);
-            border-radius: 4px;
-            border-left: 2px solid #ff6b35;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            background: var(--bg-deep);
+            border-radius: 8px;
+            border-left: 3px solid var(--primary);
             animation: slideIn 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
         .feed-item.clickable {
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
 
         .feed-item.clickable:hover {
-            background: rgba(255, 107, 53, 0.2);
+            background: var(--bg-elevated);
+            border-left-color: var(--text-primary);
         }
 
         .feed-item.new {
@@ -394,22 +514,26 @@
         }
 
         @keyframes highlight {
-            0% { background: rgba(255, 107, 53, 0.3); }
-            100% { background: rgba(255, 107, 53, 0.05); }
+            0% { background: rgba(0, 212, 255, 0.15); }
+            100% { background: var(--bg-deep); }
         }
 
         .feed-item .type {
-            color: #ff8c5a;
             font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         .feed-item .location {
-            color: #888;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
         }
 
         .feed-item .time {
-            color: #555;
-            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
         }
 
         /* Map Container */
@@ -421,32 +545,35 @@
         #map {
             width: 100%;
             height: 100%;
-            background: #0a0a0a;
+            background: var(--bg-deep);
         }
 
         /* Status Bar */
         .status-bar {
             position: absolute;
-            top: 12px;
-            right: 12px;
-            background: rgba(10, 10, 10, 0.9);
-            border: 1px solid #333;
-            padding: 6px 12px;
-            border-radius: 16px;
+            top: 16px;
+            right: 16px;
+            background: rgba(18, 18, 26, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            padding: 10px 16px;
+            border-radius: 50px;
             z-index: 1000;
-            font-size: 0.7rem;
-            color: #888;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
             display: flex;
             align-items: center;
-            gap: 6px;
-            max-width: 350px;
+            gap: 10px;
+            max-width: 400px;
         }
 
         .status-dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            background: #ff6b35;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
             animation: pulse 2s infinite;
             flex-shrink: 0;
         }
@@ -460,91 +587,117 @@
         /* Legend */
         .legend {
             position: absolute;
-            bottom: 25px;
-            right: 12px;
-            background: rgba(10, 10, 10, 0.9);
-            border: 1px solid #333;
-            padding: 10px 12px;
-            border-radius: 6px;
+            bottom: 30px;
+            right: 16px;
+            background: rgba(18, 18, 26, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            padding: 14px 16px;
+            border-radius: 12px;
             z-index: 1000;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
         }
 
         .legend h4 {
-            color: #ff6b35;
-            margin-bottom: 6px;
-            font-size: 0.7rem;
+            color: var(--primary);
+            margin-bottom: 10px;
+            font-size: 0.65rem;
+            font-family: 'JetBrains Mono', monospace;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.1em;
         }
 
         .legend-gradient {
-            width: 100px;
-            height: 10px;
-            background: linear-gradient(to right, #2d1000, #8b3a00, #ff6b35, #ff8c5a);
-            border-radius: 2px;
-            margin-bottom: 4px;
+            width: 120px;
+            height: 8px;
+            background: linear-gradient(to right, #0a2a3a, #005577, #00aadd, var(--primary));
+            border-radius: 4px;
+            margin-bottom: 6px;
         }
 
         .legend-labels {
             display: flex;
             justify-content: space-between;
-            color: #555;
-            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
         }
 
         /* Popup styling */
+        .leaflet-popup-content-wrapper {
+            background: var(--bg-surface);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .leaflet-popup-tip {
+            background: var(--bg-surface);
+            border: 1px solid var(--glass-border);
+        }
+
+        .event-popup {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+        }
+
         .event-popup h4 {
-            color: #ff6b35;
-            margin-bottom: 6px;
+            color: var(--primary);
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
         }
 
         .event-popup .detail {
             font-size: 0.85rem;
-            color: #333;
-            margin: 3px 0;
+            color: var(--text-secondary);
+            margin: 6px 0;
         }
 
         .event-popup .detail strong {
-            color: #1a1a1a;
+            color: var(--text-primary);
+            font-weight: 500;
         }
 
         /* Leaderboard */
         .leaderboard-panel {
-            min-height: 120px;
+            min-height: 140px;
         }
 
         .leaderboard {
-            max-height: 150px;
+            max-height: 180px;
             overflow-y: auto;
         }
 
         .leaderboard-item {
             display: flex;
             align-items: center;
-            padding: 6px 8px;
-            margin-bottom: 4px;
-            background: rgba(255, 107, 53, 0.03);
-            border-radius: 4px;
-            font-size: 0.75rem;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            background: var(--bg-deep);
+            border-radius: 8px;
+            font-size: 0.85rem;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            border: 1px solid transparent;
         }
 
         .leaderboard-item:hover {
-            background: rgba(255, 107, 53, 0.1);
+            background: var(--bg-elevated);
+            border-color: var(--border-highlight);
         }
 
         .leaderboard-rank {
-            width: 22px;
-            height: 22px;
+            width: 26px;
+            height: 26px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 50%;
+            border-radius: 6px;
             font-weight: 700;
-            font-size: 0.7rem;
-            margin-right: 8px;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            margin-right: 12px;
             flex-shrink: 0;
         }
 
@@ -554,7 +707,7 @@
         }
 
         .leaderboard-rank.silver {
-            background: linear-gradient(135deg, #c0c0c0, #a8a8a8);
+            background: linear-gradient(135deg, #e0e0e0, #b8b8b8);
             color: #1a1a1a;
         }
 
@@ -564,8 +717,9 @@
         }
 
         .leaderboard-rank.normal {
-            background: #333;
-            color: #888;
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
         }
 
         .leaderboard-username {
@@ -573,29 +727,41 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            color: #ccc;
+            color: var(--text-secondary);
         }
 
         .leaderboard-count {
-            color: #ff8c5a;
+            color: var(--primary);
             font-weight: 600;
-            margin-left: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            margin-left: 12px;
         }
 
         /* User search */
         #user-search {
             width: 100%;
-            padding: 6px 8px;
-            background: #151515;
-            border: 1px solid #333;
-            border-radius: 4px;
-            color: #eee;
-            font-size: 0.8rem;
+            padding: 10px 12px;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        }
+
+        #user-search::placeholder {
+            color: var(--text-muted);
+        }
+
+        #user-search:hover {
+            border-color: var(--border-highlight);
         }
 
         #user-search:focus {
             outline: none;
-            border-color: #ff6b35;
+            border-color: var(--primary);
+            box-shadow: var(--glow-primary);
         }
 
         .user-dropdown {
@@ -605,76 +771,125 @@
             right: 0;
             max-height: 200px;
             overflow-y: auto;
-            background: #151515;
-            border: 1px solid #333;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
             border-top: none;
-            border-radius: 0 0 4px 4px;
+            border-radius: 0 0 8px 8px;
             z-index: 100;
         }
 
         .user-option {
-            padding: 6px 10px;
+            padding: 10px 12px;
             cursor: pointer;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
             display: flex;
             justify-content: space-between;
-            border-bottom: 1px solid #222;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
         }
 
         .user-option:hover {
-            background: rgba(255, 107, 53, 0.1);
+            background: var(--bg-elevated);
+        }
+
+        .user-option:last-child {
+            border-bottom: none;
         }
 
         .user-option .count {
-            color: #555;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
         }
 
         .selected-user {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(255, 107, 53, 0.15);
-            border: 1px solid rgba(255, 107, 53, 0.3);
-            border-radius: 4px;
-            padding: 6px 10px;
-            margin-top: 6px;
-            font-size: 0.8rem;
+            background: rgba(0, 212, 255, 0.08);
+            border: 1px solid var(--border-highlight);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-top: 8px;
+            font-size: 0.85rem;
         }
 
         .selected-user span {
-            color: #ff8c5a;
+            color: var(--primary);
             font-weight: 500;
         }
 
         .btn-clear {
             background: none;
             border: none;
-            color: #888;
+            color: var(--text-muted);
             cursor: pointer;
-            font-size: 1rem;
+            font-size: 1.2rem;
             padding: 0 4px;
+            line-height: 1;
+            transition: color 0.2s;
         }
 
         .btn-clear:hover {
-            color: #ff6b35;
+            color: var(--accent-red);
+        }
+
+        /* Auto-follow info */
+        .auto-follow-info {
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            margin-top: 4px;
+            padding-left: 26px;
         }
 
         /* Scrollbar */
         ::-webkit-scrollbar {
-            width: 4px;
+            width: 6px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #1a1a1a;
+            background: var(--bg-deep);
+            border-radius: 3px;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #333;
-            border-radius: 2px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #ff6b35;
+            background: var(--primary);
+        }
+
+        /* Leaflet overrides */
+        .leaflet-control-zoom {
+            border: none !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        .leaflet-control-zoom a {
+            background: var(--bg-surface) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid var(--border) !important;
+            width: 36px !important;
+            height: 36px !important;
+            line-height: 36px !important;
+            font-size: 18px !important;
+        }
+
+        .leaflet-control-zoom a:hover {
+            background: var(--bg-elevated) !important;
+            color: var(--primary) !important;
+        }
+
+        .leaflet-control-zoom-in {
+            border-radius: 8px 8px 0 0 !important;
+        }
+
+        .leaflet-control-zoom-out {
+            border-radius: 0 0 8px 8px !important;
+            border-top: none !important;
         }
     </style>
 </head>
@@ -682,23 +897,25 @@
     <div class="container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
-            <h1>Global Traffic Tracker</h1>
-            <p class="subtitle">Real-time Worldwide Monitor</p>
+            <div class="sidebar-header">
+                <h1>Traffic Intelligence</h1>
+                <p class="subtitle">Global Real-time Monitor</p>
+            </div>
 
             <!-- Stats -->
             <div class="panel">
                 <h3>Statistics</h3>
                 <div class="stat-row">
                     <span class="stat-label">Total Events</span>
-                    <span class="stat-value" id="stat-total">-</span>
+                    <span class="stat-value" id="stat-total">—</span>
                 </div>
                 <div class="stat-row">
                     <span class="stat-label">Unique Users</span>
-                    <span class="stat-value" id="stat-users">-</span>
+                    <span class="stat-value" id="stat-users">—</span>
                 </div>
                 <div class="stat-row">
                     <span class="stat-label">Date Range</span>
-                    <span class="stat-value" id="stat-time">-</span>
+                    <span class="stat-value" id="stat-time">—</span>
                 </div>
             </div>
 
@@ -718,11 +935,11 @@
                     <label>Region</label>
                     <select id="filter-region" onchange="onFilterChange()">
                         <option value="">All Regions</option>
-                        <option value="europe">🇪🇺 Europe</option>
-                        <option value="americas">🌎 Americas</option>
-                        <option value="asia">🌏 Asia</option>
-                        <option value="oceania">🌊 Oceania</option>
-                        <option value="africa">🌍 Africa</option>
+                        <option value="europe">Europe</option>
+                        <option value="americas">Americas</option>
+                        <option value="asia">Asia</option>
+                        <option value="oceania">Oceania</option>
+                        <option value="africa">Africa</option>
                     </select>
                 </div>
 
@@ -741,12 +958,12 @@
                 <div class="filter-group" id="date-range-group" style="display: none;">
                     <label>From</label>
                     <input type="date" id="filter-date-from" onchange="onFilterChange()">
-                    <label style="margin-top: 6px;">To</label>
+                    <label style="margin-top: 8px;">To</label>
                     <input type="date" id="filter-date-to" onchange="onFilterChange()">
                 </div>
 
                 <div class="filter-group">
-                    <label>Event Type (click to filter)</label>
+                    <label>Event Type</label>
                     <div class="type-filters" id="type-filters">
                         <!-- Populated by JS -->
                     </div>
@@ -767,7 +984,7 @@
                     </div>
                 </div>
 
-                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                <div style="margin-top: 12px;">
                     <button class="btn btn-ghost btn-small" onclick="resetFilters()">Reset All</button>
                 </div>
             </div>
@@ -792,7 +1009,7 @@
                         <input type="checkbox" id="auto-follow" checked>
                         Auto-Follow Events
                     </label>
-                    <div class="auto-follow-info" id="auto-follow-info" style="font-size: 0.7rem; color: #666; margin-top: 4px;">
+                    <div class="auto-follow-info" id="auto-follow-info">
                         Teleports every 10s
                     </div>
                 </div>
@@ -877,14 +1094,14 @@
         // User search debounce timer
         let userSearchTimer = null;
 
-        // Event type colors
+        // Event type colors (cyber theme)
         const typeColors = {
             'POLICE': '#3b82f6',      // Blue
             'JAM': '#f97316',          // Orange
             'HAZARD': '#facc15',       // Yellow
-            'ROAD_CLOSED': '#a855f7',  // Purple
+            'ROAD_CLOSED': '#8b5cf6',  // Violet
             'ACCIDENT': '#ef4444',     // Red
-            'CONSTRUCTION': '#6b7280'  // Gray
+            'CONSTRUCTION': '#64748b'  // Slate
         };
 
         // Auto-follow throttling (teleport max once per 10 seconds)
@@ -921,7 +1138,7 @@
                 if (stats.first_event && stats.last_event) {
                     const first = stats.first_event.substring(0, 10);
                     const last = stats.last_event.substring(0, 10);
-                    document.getElementById('stat-time').textContent = first === last ? first : `${first} - ${last}`;
+                    document.getElementById('stat-time').textContent = first === last ? first : `${first} — ${last}`;
                 }
             } catch (err) {
                 console.error('Failed to load stats:', err);
@@ -937,7 +1154,7 @@
                 container.innerHTML = '';
 
                 types.forEach(t => {
-                    const color = typeColors[t.type] || '#888';
+                    const color = typeColors[t.type] || '#64748b';
                     const hasSubtypes = t.subtypes && t.subtypes.length > 0;
 
                     // Create type group container
@@ -965,7 +1182,7 @@
                     const chip = document.createElement('div');
                     chip.className = 'type-chip';
                     chip.dataset.type = t.type;
-                    chip.innerHTML = `<span class="dot" style="background: ${color}"></span>${t.type} <span style="color:#555">${t.count.toLocaleString()}</span>`;
+                    chip.innerHTML = `<span class="dot" style="background: ${color}"></span>${t.type}<span class="count">${t.count.toLocaleString()}</span>`;
                     chip.onclick = () => selectType(chip);
                     header.appendChild(chip);
 
@@ -984,7 +1201,7 @@
                             subChip.dataset.subtype = st.subtype;
                             // Format subtype name (remove parent prefix for cleaner display)
                             const displayName = st.subtype.replace(t.type + '_', '').replace(/_/g, ' ');
-                            subChip.innerHTML = `<span class="dot" style="background: ${color}"></span>${displayName} <span style="color:#444">${st.count.toLocaleString()}</span>`;
+                            subChip.innerHTML = `<span class="dot" style="background: ${color}"></span>${displayName}<span class="count">${st.count.toLocaleString()}</span>`;
                             subChip.onclick = () => selectSubtype(subChip);
                             subtypesContainer.appendChild(subChip);
                         });
@@ -1097,7 +1314,10 @@
             document.getElementById('selected-user').style.display = 'none';
             document.querySelectorAll('.type-chip.active, .subtype-chip.active').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.subtypes-container').forEach(c => c.classList.remove('expanded'));
-            document.querySelectorAll('.type-expand').forEach(c => c.classList.remove('expanded'));
+            document.querySelectorAll('.type-expand').forEach(c => {
+                c.classList.remove('expanded');
+                c.innerHTML = '▶';
+            });
 
             currentFilters = { type: null, subtype: null, since: null, dateFrom: null, dateTo: null, user: null, region: null };
             applyFilters();
@@ -1140,7 +1360,7 @@
                         ).join('');
                         dropdown.style.display = 'block';
                     } else {
-                        dropdown.innerHTML = '<div class="user-option" style="color:#555">No users found</div>';
+                        dropdown.innerHTML = '<div class="user-option" style="color:var(--text-muted)">No users found</div>';
                         dropdown.style.display = 'block';
                     }
                 } catch (err) {
@@ -1206,12 +1426,12 @@
                         max: maxIntensity || 1,
                         minOpacity: 0.3,
                         gradient: {
-                            0.0: '#2d1000',
-                            0.2: '#4a2000',
-                            0.4: '#8b3a00',
-                            0.6: '#cc5500',
-                            0.8: '#ff6b35',
-                            1.0: '#ff8c5a'
+                            0.0: '#0a1a2a',
+                            0.2: '#003355',
+                            0.4: '#005588',
+                            0.6: '#0088bb',
+                            0.8: '#00bbee',
+                            1.0: '#00d4ff'
                         }
                     });
 
@@ -1228,7 +1448,7 @@
                     filterInfo = ` (${currentFilters.type})`;
                 }
                 document.getElementById('status-text').textContent =
-                    `Showing ${data.length} locations` + filterInfo;
+                    `Showing ${data.length.toLocaleString()} locations` + filterInfo;
             } catch (err) {
                 console.error('Failed to load heatmap:', err);
             }
@@ -1244,14 +1464,14 @@
                 markersLayer.clearLayers();
 
                 events.forEach(event => {
-                    const color = typeColors[event.type] || '#888';
+                    const color = typeColors[event.type] || '#64748b';
                     const marker = L.circleMarker([event.latitude, event.longitude], {
-                        radius: 5,
+                        radius: 6,
                         fillColor: color,
-                        color: '#fff',
+                        color: 'rgba(255,255,255,0.3)',
                         weight: 1,
                         opacity: 1,
-                        fillOpacity: 0.8
+                        fillOpacity: 0.9
                     });
 
                     marker.bindPopup(`
@@ -1299,7 +1519,7 @@
             if (data.type === 'new_event' && data.event) {
                 const e = data.event;
                 const time = new Date(e.timestamp).toLocaleTimeString();
-                const color = typeColors[e.report_type] || '#888';
+                const color = typeColors[e.report_type] || '#64748b';
                 item.innerHTML = `
                     <span class="type" style="color:${color}">${e.report_type}</span>
                     <span class="location">${e.grid_cell || `${e.latitude.toFixed(2)}, ${e.longitude.toFixed(2)}`}</span>
@@ -1323,8 +1543,8 @@
                             radius: 15,
                             color: color,
                             fillColor: color,
-                            fillOpacity: 0.6,
-                            weight: 3
+                            fillOpacity: 0.4,
+                            weight: 2
                         }).addTo(map);
 
                         // Animate pulse and remove
@@ -1349,13 +1569,13 @@
                         map.flyTo([lat, lng], 14, { duration: 1 });
 
                         // Add a temporary marker to highlight the location
-                        const markerColor = typeColors[item.dataset.type] || '#ff6b35';
+                        const markerColor = typeColors[item.dataset.type] || '#00d4ff';
                         const pulseMarker = L.circleMarker([lat, lng], {
                             radius: 12,
                             color: markerColor,
                             fillColor: markerColor,
-                            fillOpacity: 0.5,
-                            weight: 3
+                            fillOpacity: 0.4,
+                            weight: 2
                         }).addTo(map);
 
                         // Pulse animation then remove
@@ -1368,13 +1588,13 @@
                     return;
                 }
 
-                const color = typeColors[data.event_types?.[0]] || '#ff6b35';
+                const color = typeColors[data.event_types?.[0]] || '#00d4ff';
                 item.innerHTML = `
-                    <span class="type" style="color:#888">SCAN</span>
+                    <span class="type" style="color:var(--text-muted)">SCAN</span>
                     <span class="location">${data.cell_name} (${data.country})</span>
                     <span class="time">${data.cell_idx}/${data.total_cells} • +${data.new_events}</span>
                 `;
-                item.style.borderLeftColor = data.new_events > 0 ? '#ff6b35' : '#333';
+                item.style.borderLeftColor = data.new_events > 0 ? 'var(--primary)' : 'var(--border)';
 
                 // Update status bar
                 document.getElementById('status-text').textContent =
@@ -1509,8 +1729,8 @@
                         radius: 15,
                         color: pendingTeleport.color,
                         fillColor: pendingTeleport.color,
-                        fillOpacity: 0.6,
-                        weight: 3
+                        fillOpacity: 0.4,
+                        weight: 2
                     }).addTo(map);
                     setTimeout(() => map.removeLayer(pulseMarker), 2500);
 

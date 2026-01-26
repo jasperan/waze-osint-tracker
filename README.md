@@ -6,9 +6,11 @@
 
 A worldwide data collection tool for Waze traffic events. Demonstrates location privacy risks in crowdsourced traffic applications.
 
-![Web UI Main View](https://raw.githubusercontent.com/jasperan/waze-osint-tracker/main/img/web-ui-main.png)
+![Web UI Main View](img/ui-redesign-main.png)
 
-![Web UI Live Events](https://raw.githubusercontent.com/jasperan/waze-osint-tracker/main/img/web-ui-event.png)
+![Web UI Filters](img/ui-redesign-filters.png)
+
+![Web UI Subtypes](img/ui-redesign-subtypes.png)
 
 ## What It Does
 
