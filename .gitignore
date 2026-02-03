@@ -9,6 +9,9 @@ exports/*.geojson
 .env
 *.log
 docs/plans/
+task_plan.md
+findings.md
+progress.md
 
 # Claude Code / IDE files
 CLAUDE.md
