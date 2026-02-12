@@ -23,11 +23,14 @@ def test_get_traffic_notifications_parses_response():
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response
 
+    mock_rate_limiter = MagicMock()
+
     with patch.object(WazeClient, '__init__', lambda self, *args, **kwargs: None):
         client = WazeClient()
         client.session = mock_session
         client.timeout = 30
         client.WAZE_API_URL = "https://www.waze.com/live-map/api/georss"
+        client.rate_limiter = mock_rate_limiter
 
         alerts, jams = client.get_traffic_notifications(
             lat_top=40.46,
@@ -48,11 +51,14 @@ def test_health_check_returns_true_when_server_responds():
     mock_session = MagicMock()
     mock_session.get.return_value = mock_response
 
+    mock_rate_limiter = MagicMock()
+
     with patch.object(WazeClient, '__init__', lambda self, *args, **kwargs: None):
         client = WazeClient()
         client.session = mock_session
         client.timeout = 5
         client.WAZE_API_URL = "https://www.waze.com/live-map/api/georss"
+        client.rate_limiter = mock_rate_limiter
 
         assert client.health_check() == True
 
@@ -61,11 +67,14 @@ def test_health_check_returns_false_on_error():
     mock_session = MagicMock()
     mock_session.get.side_effect = requests.RequestException("Connection refused")
 
+    mock_rate_limiter = MagicMock()
+
     with patch.object(WazeClient, '__init__', lambda self, *args, **kwargs: None):
         client = WazeClient()
         client.session = mock_session
         client.timeout = 5
         client.WAZE_API_URL = "https://www.waze.com/live-map/api/georss"
+        client.rate_limiter = mock_rate_limiter
 
         assert client.health_check() == False
 
