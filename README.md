@@ -1,8 +1,8 @@
 # Waze OSINT Tracker
 
-[![PyPI version](https://badge.fury.io/py/waze-logs.svg)](https://pypi.org/project/waze-logs/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://img.shields.io/pypi/v/waze-logs?style=for-the-badge)](https://pypi.org/project/waze-logs/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?style=for-the-badge)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 A worldwide data collection tool for Waze traffic events. Demonstrates location privacy risks in crowdsourced traffic applications.
 
@@ -131,3 +131,12 @@ $ waze logs
 [14:32:17] + JAM          @  48.85660,    2.35220 (JAM_HEAVY_TRAFFIC) - driver_x7y8z9
 [14:32:19] + HAZARD       @  51.50740,   -0.12780 (HAZARD_ON_ROAD) - london_user_42
 ```
+
+---
+
+<div align="center">
+
+[![GitHub](https://img.shields.io/badge/GitHub-jasperan-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/jasperan)&nbsp;
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-jasperan-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/jasperan/)
+
+</div>
