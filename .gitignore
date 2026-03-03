@@ -27,3 +27,4 @@ build/
 # Benchmarks and temp files
 benchmark_results.txt
 *.pid
+dogfood-output/

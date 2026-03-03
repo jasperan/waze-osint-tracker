@@ -20,6 +20,9 @@ app = Flask(__name__)
 event_queues = []
 event_queues_lock = threading.Lock()
 
+# Stats cache (expensive query - cache for 60 seconds)
+_stats_cache = {"data": None, "expires": 0}
+
 # Status file path for collector updates
 STATUS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "data", "collector_status.json")
@@ -80,9 +83,13 @@ def index():
 
 @app.route("/api/stats")
 def api_stats():
-    """Get summary statistics from all databases."""
+    """Get summary statistics from all databases (cached 60s)."""
+    now = time.time()
+    if _stats_cache["data"] and now < _stats_cache["expires"]:
+        return jsonify(_stats_cache["data"])
+
     total_events = 0
-    unique_users = set()
+    total_unique_users = 0
     first_event = None
     last_event = None
 
@@ -98,11 +105,7 @@ def api_stats():
 
             if row:
                 total_events += row["count"] or 0
-
-                # Get unique users for this db
-                users_rows = db.execute("SELECT DISTINCT username FROM events").fetchall()
-                for u in users_rows:
-                    unique_users.add(u["username"])
+                total_unique_users += row["users"] or 0
 
                 if row["first_event"]:
                     if first_event is None or row["first_event"] < first_event:
@@ -115,12 +118,15 @@ def api_stats():
         except Exception as e:
             print(f"Stats error for {region}: {e}")
 
-    return jsonify({
+    result = {
         "total_events": total_events,
-        "unique_users": len(unique_users),
+        "unique_users": total_unique_users,
         "first_event": first_event,
         "last_event": last_event
-    })
+    }
+    _stats_cache["data"] = result
+    _stats_cache["expires"] = time.time() + 60
+    return jsonify(result)
 
 
 @app.route("/api/events")
