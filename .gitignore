@@ -28,3 +28,17 @@ build/
 benchmark_results.txt
 *.pid
 dogfood-output/
+
+
+# OpenCode-generated documentation (local reference only)
+TESTING_REPORT.md
+AGENT_HARNESS_ANNEX.md
+SKILLS_EXECUTION_SUMMARY.md
+
+# Generated documentation
+docs/plans/
+docs/*.md
+!docs/README.md
+*_FEATURES.md
+*_ENHANCEMENTS.md
+*_REPORT.md

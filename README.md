@@ -140,3 +140,48 @@ $ waze logs
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-jasperan-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/jasperan/)
 
 </div>
+
+---
+
+## 🎨 Frontend Design
+
+### UI Screenshots
+
+The Waze Logger dashboard features a **Dark Map Intelligence** aesthetic with amber/gold accents on deep blue backgrounds.
+
+#### Main Dashboard
+![Dashboard](assets/screenshots/dashboard.png)
+*Real-time map view with event markers and statistics sidebar*
+
+#### Event Details
+![Events](assets/screenshots/events.png)
+*Detailed view of traffic events with filtering options*
+
+#### User Tracking
+![Users](assets/screenshots/users.png)
+*Tracked users panel with movement patterns*
+
+#### Statistics Panel
+![Stats](assets/screenshots/stats.png)
+*Data analytics and visualization charts*
+
+### Design System
+
+| Component | Description |
+|-----------|-------------|
+| **Color Palette** | Amber/gold (#E8A817) on deep navy (#06080C) |
+| **Typography** | Instrument Sans for UI, IBM Plex Mono for data |
+| **Layout** | Split-pane: map (main) + sidebar (data) |
+| **Map Style** | Dark-themed Leaflet with custom markers |
+| **Glass Effects** | Translucent panels with backdrop blur |
+
+### Key UI Components
+
+1. **Interactive Map** - Leaflet-based map with custom event markers
+2. **Event Cards** - Glass-morphism cards showing alert details
+3. **Filter Bar** - Toggle switches for event types (Police, Jam, Hazard, etc.)
+4. **Stats Widgets** - Real-time counters with animated updates
+5. **User List** - Scrollable list of tracked Waze users
+6. **Time Filter** - Date range selector for historical data
+
+> **Note**: Screenshots are stored in `assets/screenshots/`. Start the Flask server (`waze web`) to capture live screenshots.
