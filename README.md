@@ -18,19 +18,53 @@ Captures Waze traffic reports (police, jams, hazards, accidents, road closures) 
 
 **Based on research by [Covert Labs](https://x.com/harrris0n/status/2014197314571952167)**
 
+## Install
+
+```bash
+# From PyPI
+uv add waze-logs
+# or
+pip install waze-logs
+```
+
 ## Quick Start
 
 ```bash
-# Install
-pip install waze-logs
+# Clone and sync dependencies
+uv sync
 
-# Run (starts collector + web UI in background)
-waze start -b
+# Run the CLI
+uv run waze start -b
 
 # Open http://localhost:5000
 ```
 
 That's it. The web UI shows a live map with events streaming in from around the world.
+
+## Development
+
+```bash
+# Sync all dependencies (including dev group)
+uv sync
+
+# Run tests
+uv run pytest
+
+# Lint code
+uv run ruff check .
+
+# Format code
+uv run ruff format .
+
+# Type check
+uv run ty check .
+
+# Add a new dependency
+uv add <package>
+
+# Add a dev dependency
+uv add --dev <package>
+```
 
 ## Additional Commands
 
@@ -143,7 +177,7 @@ $ waze logs
 
 ---
 
-## 🎨 Frontend Design
+## Frontend Design
 
 ### UI Screenshots
 
