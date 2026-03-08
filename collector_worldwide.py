@@ -4,16 +4,17 @@
 
 import hashlib
 import json
-import time
+import logging
 import os
 import signal
-import yaml
-import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 # Status file for real-time UI updates
 STATUS_FILE = "./data/collector_status.json"
@@ -506,11 +507,11 @@ def main():
     args = parser.parse_args()
 
     if args.generate_configs:
-        from europe_grid import save_europe_config
+        from africa_grid import save_africa_config
         from americas_grid import save_americas_config
         from asia_grid import save_asia_config
+        from europe_grid import save_europe_config
         from oceania_grid import save_oceania_config
-        from africa_grid import save_africa_config
 
         save_europe_config()
         save_americas_config()

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Benchmark different thread counts for the Waze collector."""
 
+import os
+import sqlite3
 import subprocess
 import time
-import sqlite3
-import os
 from datetime import datetime
 
 # Configuration
@@ -157,18 +157,18 @@ def main():
 
     # Save results to file
     with open("benchmark_results.txt", "w") as f:
-        f.write(f"Waze Collector Thread Benchmark Results\n")
+        f.write("Waze Collector Thread Benchmark Results\n")
         f.write(f"Date: {datetime.now().isoformat()}\n")
         f.write(f"Duration per test: {BENCHMARK_DURATION}s\n\n")
         for r in results:
             f.write(f"{r['threads']} threads: {r['events_per_minute']:.1f} events/min\n")
         f.write(f"\nOptimal: {best['threads']} threads\n")
 
-    print(f"\nResults saved to benchmark_results.txt")
+    print("\nResults saved to benchmark_results.txt")
     return best["threads"]
 
 
 if __name__ == "__main__":
     optimal = main()
-    print(f"\nTo use the optimal setting, run:")
+    print("\nTo use the optimal setting, run:")
     print(f"  python cli.py start -b -t {optimal}")

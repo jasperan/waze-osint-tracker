@@ -1,27 +1,24 @@
 # cli.py
+import json
+import logging
 import os
-import sys
 import signal
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
 import click
 import yaml
-import json
-import time
-import threading
-import logging
-from pathlib import Path
-from tabulate import tabulate
-from datetime import datetime, timedelta, timezone
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from rich import box
 from rich.console import Console
-from rich.logging import RichHandler
-from rich.theme import Theme
 from rich.panel import Panel
 from rich.table import Table
-from rich.live import Live
-from rich.layout import Layout
 from rich.text import Text
-from rich import box
+from rich.theme import Theme
+from tabulate import tabulate
 
 # Rich console with custom theme for event types
 WAZE_THEME = Theme({
@@ -597,7 +594,7 @@ class CLIWorldwideCollector:
         strategy_text.append("  • Full P3 (coverage) scan every 10 cycles (parallel)\n", style="dim")
         strategy_text.append("  • 10 second pause between cycles\n", style="dim")
         if self.web_port:
-            strategy_text.append(f"  • Web UI at ", style="dim")
+            strategy_text.append("  • Web UI at ", style="dim")
             strategy_text.append(f"http://localhost:{self.web_port}", style="bold underline blue")
         console.print(strategy_text)
         console.print()
@@ -819,8 +816,8 @@ def collect(web, port, region):
     pid = CLIWorldwideCollector.get_pid()
     if pid:
         click.echo(f"Collector already running (PID {pid})")
-        click.echo(f"Use 'waze logs' to watch live output")
-        click.echo(f"Use 'waze stop --worldwide' to stop it")
+        click.echo("Use 'waze logs' to watch live output")
+        click.echo("Use 'waze stop --worldwide' to stop it")
         return
 
     web_port = port if web else None
@@ -848,6 +845,7 @@ def logs(lines, follow):
         waze logs -F           # Show recent logs and exit (no follow)
     """
     import subprocess
+
     from collector import Collector
 
     # Check for running collectors and determine log file
@@ -1011,7 +1009,7 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
             stdin=subprocess.DEVNULL,
             start_new_session=True
         )
-        click.echo(f"Collector started in background")
+        click.echo("Collector started in background")
         if enable_web:
             click.echo(f"Web UI available at http://localhost:{port}")
         click.echo("Use 'waze logs' to watch output or 'waze stop' to stop")
@@ -1044,8 +1042,8 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
         pid = CLIWorldwideCollector.get_pid()
         if pid:
             click.echo(f"Worldwide collector already running (PID {pid})")
-            click.echo(f"Use 'waze logs' to watch live output")
-            click.echo(f"Use 'waze stop' to stop it")
+            click.echo("Use 'waze logs' to watch live output")
+            click.echo("Use 'waze stop' to stop it")
             return
 
         selected_regions = list(region) if region else None
@@ -1186,7 +1184,7 @@ def status(show_all):
 
         click.echo(tabulate(table, headers=["Region", "Events", "Users", "First", "Last"]))
 
-        click.echo(f"\n=== Totals ===")
+        click.echo("\n=== Totals ===")
         click.echo(f"Total events: {total_events:,}")
         click.echo(f"Unique users: {len(all_users):,}")
         if first_event and last_event:
@@ -1408,8 +1406,8 @@ def profile(username):
 @click.option("-o", "--output", help="Output file path")
 def export(fmt, output):
     """Export events to CSV or GeoJSON."""
-    import json
     import csv
+    import json
 
     db = get_db()
     rows = db.execute("SELECT * FROM events ORDER BY timestamp_ms").fetchall()

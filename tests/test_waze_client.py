@@ -1,7 +1,8 @@
 # tests/test_waze_client.py
-import pytest
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
 from waze_client import WazeClient
+
 
 def test_get_traffic_notifications_parses_response():
     mock_response = Mock()

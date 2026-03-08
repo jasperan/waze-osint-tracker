@@ -1,8 +1,9 @@
 # oceania_grid.py
 """Generate grid cells covering Oceania (Australia, New Zealand, Pacific) for Waze data collection."""
 
-from typing import List, Dict, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
 
 @dataclass
 class GridCell:

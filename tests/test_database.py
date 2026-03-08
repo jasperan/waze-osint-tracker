@@ -1,8 +1,9 @@
 # tests/test_database.py
 import os
 import tempfile
-import pytest
+
 from database import Database
+
 
 def test_database_creates_tables():
     with tempfile.TemporaryDirectory() as tmpdir:

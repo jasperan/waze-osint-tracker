@@ -1,9 +1,10 @@
 # tests/test_analysis.py
 import os
 import tempfile
-import pytest
+
+from analysis import get_recent_events, get_stats, get_user_profile
 from database import Database
-from analysis import get_stats, get_recent_events, get_users_summary, get_user_profile
+
 
 def test_get_stats_returns_summary():
     with tempfile.TemporaryDirectory() as tmpdir:

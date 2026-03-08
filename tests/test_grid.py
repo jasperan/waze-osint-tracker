@@ -1,8 +1,6 @@
 # tests/test_grid.py
-import tempfile
-import os
-import pytest
 from grid import GridCell, load_grid_cells
+
 
 def test_load_grid_cells_from_config():
     config = {

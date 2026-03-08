@@ -1,18 +1,23 @@
 """Flask web application for Waze Madrid Logger visualization."""
-import os
-import sys
 import json
-import time
+import logging
+import os
 import queue
+import sys
 import threading
+import time
+
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request, Response
+
+from flask import Flask, Response, jsonify, render_template, request
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from analysis import get_user_profile
 from database import Database
-from analysis import get_stats, get_recent_events, get_user_profile
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -57,7 +62,7 @@ def get_all_dbs():
             try:
                 dbs.append((region, Database(path)))
             except Exception:
-                pass
+                logger.warning("Failed to open database for region %s", region)
     return dbs
 
 
@@ -140,7 +145,7 @@ def api_events():
     date_to = request.args.get("to")  # ISO date string
     username = request.args.get("user")  # filter by username
     region_filter = request.args.get("region")  # filter by region
-    limit = request.args.get("limit", 1000, type=int)
+    limit = min(request.args.get("limit", 1000, type=int), 10000)
 
     all_events = []
 
@@ -462,7 +467,7 @@ def api_status():
                 status = json.load(f)
             return jsonify(status)
     except Exception:
-        pass
+        logger.warning("Failed to read collector status file")
     return jsonify({"status": "unknown", "message": "No collector status available"})
 
 
@@ -564,11 +569,11 @@ def status_monitor_thread():
 
                             last_event_ids[region] = current_max
                     db.close()
-                except Exception as e:
-                    pass
+                except Exception:
+                    logger.debug("Error monitoring region %s", region)
 
-        except Exception as e:
-            pass
+        except Exception:
+            logger.debug("Error in status monitor cycle")
 
         time.sleep(2)  # Check every 2 seconds
 
@@ -580,5 +585,6 @@ monitor_thread.start()
 
 if __name__ == "__main__":
     print(f"Database: {DB_PATH}")
-    print(f"Starting server at http://localhost:5000")
-    app.run(debug=True, host="0.0.0.0", port=5000, threaded=True)
+    print("Starting server at http://localhost:5000")
+    debug = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true")
+    app.run(debug=debug, host="0.0.0.0", port=5000, threaded=True)

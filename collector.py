@@ -1,15 +1,17 @@
 # collector.py
 import hashlib
 import json
-import time
+import logging
 import os
 import signal
 import sys
-import yaml
-import logging
-from pathlib import Path
+import time
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import yaml
+
 
 def generate_event_hash(
     username: str,
@@ -142,8 +144,8 @@ class Collector:
     def run(self):
         """Main collection loop."""
         from database import Database
-        from waze_client import WazeClient
         from grid import load_grid_cells
+        from waze_client import WazeClient
 
         db = Database(self.config["database_path"])
         client = WazeClient(self.config["waze_server_url"])
@@ -166,7 +168,7 @@ class Collector:
 
         self.log(f"Collector started. Polling every {interval} seconds.")
         self.log(f"Grid cells: {[c.name for c in cells]}")
-        self.log(f"Rate limiting: enabled (1.5s min delay, exponential backoff)")
+        self.log("Rate limiting: enabled (1.5s min delay, exponential backoff)")
 
         try:
             while self.running:

@@ -1,7 +1,7 @@
 # database.py
 import sqlite3
 from pathlib import Path
-from typing import Optional, List, Any
+
 
 class Database:
     def __init__(self, db_path: str, check_same_thread: bool = True):

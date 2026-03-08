@@ -1,6 +1,8 @@
 # analysis.py
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from database import Database
+
 
 def get_stats(db: Database) -> Dict[str, Any]:
     """Get summary statistics from the database."""

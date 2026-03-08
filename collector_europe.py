@@ -3,15 +3,15 @@
 
 import hashlib
 import json
-import time
+import logging
 import os
 import signal
-import sys
-import yaml
-import logging
+import time
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 # Set up logging
 logging.basicConfig(
@@ -91,7 +91,7 @@ class EuropeCollector:
 
     def _load_config(self) -> Dict[str, Any]:
         if not os.path.exists(self.config_path):
-            logger.info(f"Config not found, generating Europe grid...")
+            logger.info("Config not found, generating Europe grid...")
             from europe_grid import save_europe_config
             save_europe_config(self.config_path)
 

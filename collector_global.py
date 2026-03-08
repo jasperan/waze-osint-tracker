@@ -3,17 +3,15 @@
 
 import hashlib
 import json
-import time
+import logging
 import os
 import signal
-import sys
-import yaml
-import logging
-import threading
+import time
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 # Set up logging
 logging.basicConfig(
@@ -126,8 +124,8 @@ class GlobalCollector:
 
     def _generate_configs(self):
         """Generate regional configs if they don't exist."""
-        from europe_grid import save_europe_config
         from americas_grid import save_americas_config
+        from europe_grid import save_europe_config
 
         if not os.path.exists("config_europe.yaml"):
             logger.info("Generating Europe config...")
@@ -323,8 +321,8 @@ def main():
     args = parser.parse_args()
 
     if args.generate_configs:
-        from europe_grid import save_europe_config
         from americas_grid import save_americas_config
+        from europe_grid import save_europe_config
         save_europe_config()
         save_americas_config()
         return

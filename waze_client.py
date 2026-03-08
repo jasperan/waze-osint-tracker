@@ -1,8 +1,9 @@
 # waze_client.py
-import requests
-import time
 import random
-from typing import Tuple, List, Dict, Any
+import time
+from typing import Any, Dict, List, Tuple
+
+import requests
 
 
 class RateLimiter:

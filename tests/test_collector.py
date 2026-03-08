@@ -1,6 +1,6 @@
 # tests/test_collector.py
-import pytest
 from collector import generate_event_hash, process_alert
+
 
 def test_generate_event_hash_consistent():
     hash1 = generate_event_hash(

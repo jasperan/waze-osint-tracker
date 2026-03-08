@@ -1,8 +1,9 @@
 # africa_grid.py
 """Generate grid cells covering Africa for Waze data collection."""
 
-from typing import List, Dict, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
 
 @dataclass
 class GridCell:
