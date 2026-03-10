@@ -671,6 +671,119 @@ monitor_thread = threading.Thread(target=status_monitor_thread, daemon=True)
 monitor_thread.start()
 
 
+# === Intelligence API endpoints ===
+
+
+@app.route("/api/intel/user/<username>")
+def api_intel_user(username):
+    """Get full intelligence profile for a user."""
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+    if config.get("database_type") != "oracle":
+        return jsonify({"error": "Intelligence requires Oracle backend"}), 400
+
+    from database_oracle import Database as OracleDatabase
+
+    db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+
+    # Get behavioral vector data
+    row = db.execute(
+        "SELECT username, region, event_count, centroid_lat, centroid_lon, "
+        "geo_spread_km, hour_histogram, dow_histogram, type_distribution, "
+        "cadence_stats, dossier FROM user_behavioral_vectors WHERE username = ?",
+        (username,),
+    ).fetchone()
+    if not row:
+        db.close()
+        return jsonify({"error": "User not found in intelligence database"}), 404
+
+    profile = dict(row)
+
+    # Get routines
+    routines = db.execute(
+        "SELECT routine_type, latitude, longitude, confidence, evidence_count "
+        "FROM user_routines WHERE username = ?",
+        (username,),
+    ).fetchall()
+    profile["routines"] = [dict(r) for r in routines]
+
+    # Get co-occurrence partners
+    coocs = db.execute(
+        "SELECT user_a, user_b, co_count, avg_distance_m "
+        "FROM user_co_occurrences "
+        "WHERE user_a = ? OR user_b = ? "
+        "ORDER BY co_count DESC FETCH FIRST 10 ROWS ONLY",
+        (username, username),
+    ).fetchall()
+    profile["co_occurrences"] = [
+        {
+            "partner": r["user_b"] if r["user_a"] == username else r["user_a"],
+            "co_count": r["co_count"],
+            "avg_distance_m": r["avg_distance_m"],
+        }
+        for r in coocs
+    ]
+
+    db.close()
+    return jsonify(profile)
+
+
+@app.route("/api/intel/correlations")
+def api_intel_correlations():
+    """Get top identity correlations."""
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+    if config.get("database_type") != "oracle":
+        return jsonify({"error": "Intelligence requires Oracle backend"}), 400
+
+    limit = request.args.get("limit", 20, type=int)
+    from database_oracle import Database as OracleDatabase
+
+    db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+
+    results = db.execute(
+        "SELECT user_a, user_b, vector_similarity, graph_score, "
+        "combined_score, correlation_type, explanation "
+        "FROM identity_correlations "
+        "ORDER BY combined_score DESC "
+        "FETCH FIRST ? ROWS ONLY",
+        (limit,),
+    ).fetchall()
+    db.close()
+    return jsonify([dict(r) for r in results])
+
+
+@app.route("/api/intel/convoys")
+def api_intel_convoys():
+    """Get convoy pairs."""
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+    if config.get("database_type") != "oracle":
+        return jsonify({"error": "Intelligence requires Oracle backend"}), 400
+
+    min_count = request.args.get("min_count", 5, type=int)
+    from database_oracle import Database as OracleDatabase
+
+    db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+
+    results = db.execute(
+        "SELECT user_a, user_b, co_count, avg_distance_m, avg_time_gap_s "
+        "FROM user_co_occurrences "
+        "WHERE co_count >= ? "
+        "ORDER BY co_count DESC "
+        "FETCH FIRST 50 ROWS ONLY",
+        (min_count,),
+    ).fetchall()
+    db.close()
+    return jsonify([dict(r) for r in results])
+
+
 if __name__ == "__main__":
     try:
         _cfg = _load_web_config()
