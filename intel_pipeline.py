@@ -4,6 +4,7 @@ co-occurrence detection, and dossier generation against Oracle 26ai."""
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
@@ -11,7 +12,13 @@ import numpy as np
 from intel_cooccurrence import find_cooccurrences
 from intel_dossier import generate_dossier
 from intel_routines import infer_routines
-from intel_vectors import REGION_BBOXES, build_behavioral_vector
+from intel_vectors import (
+    REGION_BBOXES,
+    build_behavioral_vector,
+    build_dow_histogram,
+    build_hour_histogram,
+    haversine_km,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +86,6 @@ class IntelligencePipeline:
             vec = build_behavioral_vector(events, bbox, max_event_count=max_count)
 
             # Compute features for storage
-            from datetime import datetime, timezone
-
-            from intel_vectors import build_dow_histogram, build_hour_histogram
-
             hours = [
                 datetime.fromtimestamp(e["timestamp_ms"] / 1000, tz=timezone.utc).hour
                 for e in events
@@ -96,8 +99,6 @@ class IntelligencePipeline:
             lons = [e["longitude"] for e in events]
             mean_lat = sum(lats) / len(lats)
             mean_lon = sum(lons) / len(lons)
-
-            from intel_vectors import haversine_km
 
             distances = [haversine_km(lat, lon, mean_lat, mean_lon) for lat, lon in zip(lats, lons)]
             geo_spread = float(np.std(distances)) if len(distances) > 1 else 0.0
