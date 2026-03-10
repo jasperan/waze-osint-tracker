@@ -1864,5 +1864,201 @@ def tracked(limit):
     db.close()
 
 
+# === Intelligence Commands ===
+
+
+@cli.group()
+def intel():
+    """Behavioral intelligence analysis commands."""
+    pass
+
+
+@intel.command("profile")
+@click.argument("username")
+def intel_profile(username):
+    """Generate intelligence dossier for a user."""
+    from database_oracle import OracleDatabase
+
+    config = load_config()
+    if config.get("database_type") != "oracle":
+        console.print("[error]Intel commands require Oracle database backend[/error]")
+        return
+
+    db = OracleDatabase(config["oracle_dsn"])
+    from intel_pipeline import IntelligencePipeline
+
+    pipeline = IntelligencePipeline(db)
+
+    console.print(f"[info]Generating dossier for {username}...[/info]")
+    dossier = pipeline.generate_user_dossier(username)
+    if dossier:
+        console.print(
+            Panel(dossier, title=f"Intelligence Dossier: {username}", border_style="bold yellow")
+        )
+    else:
+        console.print(f"[error]No data found for user {username}[/error]")
+    db.close()
+
+
+@intel.command()
+@click.option("--top", "-n", default=20, help="Number of top correlation pairs")
+def correlations(top):
+    """Show top identity correlation pairs."""
+    from database_oracle import OracleDatabase
+
+    config = load_config()
+    if config.get("database_type") != "oracle":
+        console.print("[error]Intel commands require Oracle database backend[/error]")
+        return
+
+    db = OracleDatabase(config["oracle_dsn"])
+
+    cursor = db.execute(
+        """
+        SELECT user_a, user_b, vector_similarity, graph_score,
+               combined_score, correlation_type
+        FROM identity_correlations
+        ORDER BY combined_score DESC
+        FETCH FIRST :1 ROWS ONLY
+    """,
+        (top,),
+    )
+
+    table = Table(title="Identity Correlations", box=box.ROUNDED)
+    table.add_column("User A", style="cyan")
+    table.add_column("User B", style="cyan")
+    table.add_column("Vector Sim", justify="right")
+    table.add_column("Graph", justify="right")
+    table.add_column("Combined", justify="right")
+    table.add_column("Type", style="bold")
+
+    for row in cursor.fetchall():
+        table.add_row(row[0], row[1], f"{row[2]:.3f}", f"{row[3]:.3f}", f"{row[4]:.3f}", row[5])
+
+    console.print(table)
+    db.close()
+
+
+@intel.command()
+@click.option("--min-count", default=5, help="Minimum co-occurrence count")
+def convoys(min_count):
+    """Show detected convoy groups."""
+    from database_oracle import OracleDatabase
+
+    config = load_config()
+    if config.get("database_type") != "oracle":
+        console.print("[error]Intel commands require Oracle database backend[/error]")
+        return
+
+    db = OracleDatabase(config["oracle_dsn"])
+
+    cursor = db.execute(
+        """
+        SELECT user_a, user_b, co_count, avg_distance_m, avg_time_gap_s
+        FROM user_co_occurrences
+        WHERE co_count >= :1
+        ORDER BY co_count DESC
+        FETCH FIRST 50 ROWS ONLY
+    """,
+        (min_count,),
+    )
+
+    table = Table(title=f"Convoy Pairs (>= {min_count} co-occurrences)", box=box.ROUNDED)
+    table.add_column("User A", style="cyan")
+    table.add_column("User B", style="cyan")
+    table.add_column("Count", justify="right", style="bold yellow")
+    table.add_column("Avg Dist (m)", justify="right")
+    table.add_column("Avg Gap (s)", justify="right")
+
+    for row in cursor.fetchall():
+        table.add_row(row[0], row[1], str(row[2]), f"{row[3]:.0f}", f"{row[4]:.0f}")
+
+    console.print(table)
+    db.close()
+
+
+@intel.command()
+@click.argument("username")
+@click.argument("day", type=int)
+@click.argument("hour", type=int)
+def predict(username, day, hour):
+    """Predict user presence at a given day (0=Mon) and hour (0-23)."""
+    from database_oracle import OracleDatabase
+
+    config = load_config()
+    if config.get("database_type") != "oracle":
+        console.print("[error]Intel commands require Oracle database backend[/error]")
+        return
+
+    db = OracleDatabase(config["oracle_dsn"])
+
+    cursor = db.execute(
+        "SELECT latitude, longitude, timestamp_ms, report_type FROM events WHERE username = :1",
+        (username,),
+    )
+    cols = [c[0].lower() for c in cursor.description]
+    events = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+    if not events:
+        console.print(f"[error]No events found for {username}[/error]")
+        db.close()
+        return
+
+    from intel_prediction import predict_presence
+
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    result = predict_presence(events, target_dow=day, target_hour=hour)
+
+    if result and result["confidence"] > 0.05:
+        console.print(
+            Panel(
+                f"[bold]Location:[/bold] ({result['latitude']:.4f}, {result['longitude']:.4f})\n"
+                f"[bold]Confidence:[/bold] {result['confidence']:.1%}\n"
+                f"[bold]Radius:[/bold] {result['radius_km']:.1f} km\n"
+                f"[bold]Evidence:[/bold] {result['evidence_count']} historical events",
+                title=f"Predicted Presence: {username} on {days[day]} at {hour}:00",
+                border_style="bold green",
+            )
+        )
+    else:
+        msg = f"Insufficient data to predict {username}'s location"
+        msg += f" at {days[day]} {hour}:00"
+        console.print(f"[dim]{msg}[/dim]")
+
+    db.close()
+
+
+@intel.command()
+@click.option("--min-events", default=20, help="Minimum events per user")
+def build(min_events):
+    """Run full intelligence pipeline: vectors, routines, co-occurrence, correlations."""
+    from database_oracle import OracleDatabase
+
+    config = load_config()
+    if config.get("database_type") != "oracle":
+        console.print("[error]Intel commands require Oracle database backend[/error]")
+        return
+
+    db = OracleDatabase(config["oracle_dsn"])
+    from intel_pipeline import IntelligencePipeline
+
+    pipeline = IntelligencePipeline(db)
+
+    console.print("[bold]Step 1/3:[/bold] Building behavioral vectors...")
+    n_vectors = pipeline.build_user_vectors(min_events=min_events)
+    console.print(f"  [success]Built {n_vectors} user vectors[/success]")
+
+    console.print("[bold]Step 2/3:[/bold] Running routine inference...")
+    n_routines = pipeline.run_routine_inference(min_events=min_events)
+    console.print(f"  [success]Inferred routines for {n_routines} users[/success]")
+
+    console.print("[bold]Step 3/3:[/bold] Building co-occurrence graph...")
+    n_edges = pipeline.build_cooccurrence_graph()
+    console.print(f"  [success]Built {n_edges} co-occurrence edges[/success]")
+
+    console.print("\n[bold green]Intelligence pipeline complete![/bold green]")
+    db.close()
+
+
 if __name__ == "__main__":
     cli()
