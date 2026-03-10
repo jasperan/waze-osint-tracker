@@ -1,0 +1,7 @@
+database_type: oracle
+oracle_dsn: "waze/WazeIntel2026@localhost:1521/FREEPDB1"
+oracle_schema: waze
+# Legacy SQLite fallback (set database_type: sqlite to use)
+database_path: "./data/waze_madrid.db"
+waze_server_url: "https://www.waze.com"
+polling_interval_seconds: 300

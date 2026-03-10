@@ -1,4 +1,5 @@
 """Flask web application for Waze Madrid Logger visualization."""
+
 import json
 import logging
 import os
@@ -6,9 +7,9 @@ import queue
 import sys
 import threading
 import time
-
 from datetime import datetime, timedelta
 
+import yaml
 from flask import Flask, Response, jsonify, render_template, request
 
 # Add parent directory to path for imports
@@ -29,11 +30,28 @@ event_queues_lock = threading.Lock()
 _stats_cache = {"data": None, "expires": 0}
 
 # Status file path for collector updates
-STATUS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "data", "collector_status.json")
+STATUS_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "collector_status.json"
+)
 
-# Database paths - all regional databases
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+# Project root for config file discovery
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _load_web_config():
+    """Load config, preferring config_oracle.yaml over config.yaml."""
+    for config_file in ("config_oracle.yaml", "config.yaml"):
+        full_path = os.path.join(_PROJECT_ROOT, config_file)
+        if os.path.exists(full_path):
+            with open(full_path) as f:
+                return yaml.safe_load(f)
+    # Final fallback
+    with open(os.path.join(_PROJECT_ROOT, "config.yaml")) as f:
+        return yaml.safe_load(f)
+
+
+# Database paths - all regional databases (SQLite fallback)
+DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
 DB_PATHS = {
     "madrid": os.path.join(DATA_DIR, "waze_madrid.db"),
     "europe": os.path.join(DATA_DIR, "waze_europe.db"),
@@ -48,14 +66,43 @@ DB_PATH = DB_PATHS["madrid"]
 
 
 def get_db(region=None):
-    """Get database connection for a specific region or default."""
+    """Get database connection for a specific region or default.
+
+    If config specifies ``database_type: oracle``, returns an OracleDatabase
+    instance.  Otherwise falls back to per-region SQLite files.
+    """
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+
+    if config.get("database_type") == "oracle":
+        from database_oracle import Database as OracleDatabase
+
+        return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+
     if region and region in DB_PATHS:
         return Database(DB_PATHS[region])
     return Database(DB_PATH)
 
 
 def get_all_dbs():
-    """Get connections to all existing databases."""
+    """Get connections to all existing databases.
+
+    With Oracle, returns a single ``("all", db)`` pair since all regions live
+    in one partitioned table.  With SQLite, returns one pair per region file.
+    """
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+
+    if config.get("database_type") == "oracle":
+        from database_oracle import Database as OracleDatabase
+
+        db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+        return [("all", db)]
+
     dbs = []
     for region, path in DB_PATHS.items():
         if os.path.exists(path):
@@ -127,7 +174,7 @@ def api_stats():
         "total_events": total_events,
         "unique_users": total_unique_users,
         "first_event": first_event,
-        "last_event": last_event
+        "last_event": last_event,
     }
     _stats_cache["data"] = result
     _stats_cache["expires"] = time.time() + 60
@@ -150,13 +197,19 @@ def api_events():
     all_events = []
 
     for region, db in get_all_dbs():
-        # Skip if region filter is set and doesn't match
-        if region_filter and region != region_filter:
+        # With SQLite, skip databases that don't match the filter.
+        # With Oracle (region == "all"), add a SQL WHERE clause instead.
+        if region_filter and region != "all" and region != region_filter:
             db.close()
             continue
         try:
             query = "SELECT * FROM events WHERE 1=1"
             params = []
+
+            # Oracle: filter by region column inside the single DB
+            if region_filter and region == "all":
+                query += " AND region = ?"
+                params.append(region_filter)
 
             if event_type:
                 query += " AND report_type = ?"
@@ -192,16 +245,19 @@ def api_events():
             rows = db.execute(query, tuple(params)).fetchall()
 
             for row in rows:
-                all_events.append({
-                    "id": f"{region}_{row['id']}",
-                    "username": row["username"],
-                    "latitude": row["latitude"],
-                    "longitude": row["longitude"],
-                    "timestamp": row["timestamp_utc"],
-                    "type": row["report_type"],
-                    "subtype": row["subtype"],
-                    "region": region
-                })
+                evt_region = row.get("region", region) if region == "all" else region
+                all_events.append(
+                    {
+                        "id": f"{evt_region}_{row['id']}",
+                        "username": row["username"],
+                        "latitude": row["latitude"],
+                        "longitude": row["longitude"],
+                        "timestamp": row["timestamp_utc"],
+                        "type": row["report_type"],
+                        "subtype": row["subtype"],
+                        "region": evt_region,
+                    }
+                )
 
             db.close()
         except Exception as e:
@@ -227,13 +283,19 @@ def api_heatmap():
     location_weights = {}
 
     for region, db in get_all_dbs():
-        # Skip if region filter is set and doesn't match
-        if region_filter and region != region_filter:
+        # With SQLite, skip databases that don't match the filter.
+        # With Oracle (region == "all"), add a SQL WHERE clause instead.
+        if region_filter and region != "all" and region != region_filter:
             db.close()
             continue
         try:
             query = "SELECT latitude, longitude, COUNT(*) as weight FROM events WHERE 1=1"
             params = []
+
+            # Oracle: filter by region column inside the single DB
+            if region_filter and region == "all":
+                query += " AND region = ?"
+                params.append(region_filter)
 
             if event_type:
                 query += " AND report_type = ?"
@@ -354,12 +416,15 @@ def api_users():
     for region, db in get_all_dbs():
         try:
             if search:
-                rows = db.execute("""
+                rows = db.execute(
+                    """
                     SELECT username, COUNT(*) as count
                     FROM events
                     WHERE username LIKE ?
                     GROUP BY username
-                """, (f"%{search}%",)).fetchall()
+                """,
+                    (f"%{search}%",),
+                ).fetchall()
             else:
                 rows = db.execute("""
                     SELECT username, COUNT(*) as count
@@ -375,7 +440,10 @@ def api_users():
         except Exception as e:
             print(f"Users error for {region}: {e}")
 
-    users = [{"username": u, "count": c} for u, c in sorted(user_counts.items(), key=lambda x: -x[1])[:limit]]
+    users = [
+        {"username": u, "count": c}
+        for u, c in sorted(user_counts.items(), key=lambda x: -x[1])[:limit]
+    ]
     return jsonify(users)
 
 
@@ -407,7 +475,10 @@ def api_leaderboard():
                 user_stats[u]["types"].add(row["types"])
 
                 if row["last_seen"]:
-                    if user_stats[u]["last_seen"] is None or row["last_seen"] > user_stats[u]["last_seen"]:
+                    if (
+                        user_stats[u]["last_seen"] is None
+                        or row["last_seen"] > user_stats[u]["last_seen"]
+                    ):
                         user_stats[u]["last_seen"] = row["last_seen"]
 
             db.close()
@@ -419,12 +490,14 @@ def api_leaderboard():
 
     leaderboard = []
     for rank, (username, stats) in enumerate(sorted_users, 1):
-        leaderboard.append({
-            "rank": rank,
-            "username": username,
-            "count": stats["count"],
-            "last_seen": stats["last_seen"]
-        })
+        leaderboard.append(
+            {
+                "rank": rank,
+                "username": username,
+                "count": stats["count"],
+                "last_seen": stats["last_seen"],
+            }
+        )
 
     return jsonify(leaderboard)
 
@@ -432,6 +505,7 @@ def api_leaderboard():
 @app.route("/api/stream")
 def api_stream():
     """Server-Sent Events endpoint for real-time updates."""
+
     def generate():
         q = queue.Queue()
         with event_queues_lock:
@@ -439,7 +513,8 @@ def api_stream():
 
         try:
             # Send initial connection message
-            yield f"data: {json.dumps({'type': 'connected', 'message': 'Connected to live feed'})}\n\n"
+            msg = json.dumps({"type": "connected", "message": "Connected to live feed"})
+            yield f"data: {msg}\n\n"
 
             while True:
                 try:
@@ -454,8 +529,11 @@ def api_stream():
                 if q in event_queues:
                     event_queues.remove(q)
 
-    return Response(generate(), mimetype='text/event-stream',
-                   headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.route("/api/status")
@@ -463,7 +541,7 @@ def api_status():
     """Get current collector status."""
     try:
         if os.path.exists(STATUS_FILE):
-            with open(STATUS_FILE, 'r') as f:
+            with open(STATUS_FILE, "r") as f:
                 status = json.load(f)
             return jsonify(status)
     except Exception:
@@ -479,24 +557,29 @@ def api_recent_activity():
     for region, db in get_all_dbs():
         try:
             rows = db.execute("""
-                SELECT id, username, latitude, longitude, timestamp_utc, report_type, subtype, grid_cell
+                SELECT id, username, latitude, longitude,
+                       timestamp_utc, report_type, subtype,
+                       grid_cell
                 FROM events
                 ORDER BY id DESC
                 LIMIT 20
             """).fetchall()
 
             for row in rows:
-                all_events.append({
-                    "id": f"{region}_{row['id']}",
-                    "username": row["username"],
-                    "latitude": row["latitude"],
-                    "longitude": row["longitude"],
-                    "timestamp": row["timestamp_utc"],
-                    "type": row["report_type"],
-                    "subtype": row["subtype"],
-                    "grid_cell": row["grid_cell"] if "grid_cell" in row.keys() else None,
-                    "region": region
-                })
+                evt_region = row.get("region", region) if region == "all" else region
+                all_events.append(
+                    {
+                        "id": f"{evt_region}_{row['id']}",
+                        "username": row["username"],
+                        "latitude": row["latitude"],
+                        "longitude": row["longitude"],
+                        "timestamp": row["timestamp_utc"],
+                        "type": row["report_type"],
+                        "subtype": row["subtype"],
+                        "grid_cell": row["grid_cell"] if "grid_cell" in row.keys() else None,
+                        "region": evt_region,
+                    }
+                )
 
             db.close()
         except Exception as e:
@@ -529,9 +612,9 @@ def status_monitor_thread():
                 mtime = os.path.getmtime(STATUS_FILE)
                 if mtime > last_mtime:
                     last_mtime = mtime
-                    with open(STATUS_FILE, 'r') as f:
+                    with open(STATUS_FILE, "r") as f:
                         status = json.load(f)
-                    status['type'] = 'status'
+                    status["type"] = "status"
                     broadcast_event(status)
 
             # Check for new database events in all regions
@@ -544,11 +627,14 @@ def status_monitor_thread():
 
                         if current_max > last_id:
                             # Get new events
-                            new_events = db.execute("""
+                            new_events = db.execute(
+                                """
                                 SELECT id, username, latitude, longitude, timestamp_utc,
                                        report_type, subtype, grid_cell
                                 FROM events WHERE id > ? ORDER BY id ASC LIMIT 20
-                            """, (last_id,)).fetchall()
+                            """,
+                                (last_id,),
+                            ).fetchall()
 
                             for event_row in new_events:
                                 event_data = {
@@ -561,9 +647,11 @@ def status_monitor_thread():
                                         "timestamp": event_row["timestamp_utc"],
                                         "report_type": event_row["report_type"],
                                         "subtype": event_row["subtype"],
-                                        "grid_cell": event_row["grid_cell"] if "grid_cell" in event_row.keys() else None,
-                                        "region": region
-                                    }
+                                        "grid_cell": event_row["grid_cell"]
+                                        if "grid_cell" in event_row.keys()
+                                        else None,
+                                        "region": region,
+                                    },
                                 }
                                 broadcast_event(event_data)
 
@@ -584,7 +672,14 @@ monitor_thread.start()
 
 
 if __name__ == "__main__":
-    print(f"Database: {DB_PATH}")
+    try:
+        _cfg = _load_web_config()
+        if _cfg.get("database_type") == "oracle":
+            print(f"Database: Oracle ({_cfg.get('oracle_dsn', 'N/A').split('@')[1]})")
+        else:
+            print(f"Database: {DB_PATH}")
+    except Exception:
+        print(f"Database: {DB_PATH}")
     print("Starting server at http://localhost:5000")
     debug = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true")
     app.run(debug=debug, host="0.0.0.0", port=5000, threaded=True)

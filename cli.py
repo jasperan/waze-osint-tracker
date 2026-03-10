@@ -21,22 +21,24 @@ from rich.theme import Theme
 from tabulate import tabulate
 
 # Rich console with custom theme for event types
-WAZE_THEME = Theme({
-    "police": "bold blue",
-    "hazard": "bold yellow",
-    "jam": "bold orange1",
-    "accident": "bold red",
-    "road_closed": "bold magenta",
-    "chit_chat": "bold cyan",
-    "info": "dim white",
-    "success": "bold green",
-    "error": "bold red",
-    "region.europe": "blue",
-    "region.americas": "green",
-    "region.asia": "yellow",
-    "region.oceania": "cyan",
-    "region.africa": "magenta",
-})
+WAZE_THEME = Theme(
+    {
+        "police": "bold blue",
+        "hazard": "bold yellow",
+        "jam": "bold orange1",
+        "accident": "bold red",
+        "road_closed": "bold magenta",
+        "chit_chat": "bold cyan",
+        "info": "dim white",
+        "success": "bold green",
+        "error": "bold red",
+        "region.europe": "blue",
+        "region.americas": "green",
+        "region.asia": "yellow",
+        "region.oceania": "cyan",
+        "region.africa": "magenta",
+    }
+)
 
 console = Console(theme=WAZE_THEME)
 
@@ -58,29 +60,62 @@ REGION_COLORS = {
     "africa": "region.africa",
 }
 
+
 @click.group()
 def cli():
     """Waze Worldwide Logger - Global traffic event collection and analysis."""
     pass
 
+
 def load_config():
+    """Load config, preferring config_oracle.yaml over config.yaml."""
+    for config_file in ("config_oracle.yaml", "config.yaml"):
+        if os.path.exists(config_file):
+            with open(config_file) as f:
+                return yaml.safe_load(f)
+    # Final fallback: config.yaml must exist
     with open("config.yaml") as f:
         return yaml.safe_load(f)
 
+
 def get_db(region=None):
-    """Get database connection for a specific region or default Madrid."""
+    """Get database connection for a specific region or default.
+
+    If config specifies ``database_type: oracle``, returns an OracleDatabase
+    instance (single connection for all regions).  Otherwise falls back to
+    per-region SQLite files.
+    """
+    config = load_config()
+    if config.get("database_type") == "oracle":
+        from database_oracle import Database as OracleDatabase
+
+        return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+
     from database import Database
+
     if region:
         db_path = f"./data/waze_{region}.db"
         if os.path.exists(db_path):
             return Database(db_path)
-    config = load_config()
     return Database(config["database_path"])
 
+
 def get_all_dbs():
-    """Get connections to all existing regional databases."""
+    """Get connections to all existing databases.
+
+    With Oracle, returns a single ``("all", db)`` pair since all regions live
+    in one partitioned table.  With SQLite, returns one pair per region file.
+    """
+    config = load_config()
+    if config.get("database_type") == "oracle":
+        from database_oracle import Database as OracleDatabase
+
+        db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+        return [("all", db)]
+
     from database import Database
-    DB_PATHS = {
+
+    db_paths = {
         "madrid": "./data/waze_madrid.db",
         "europe": "./data/waze_europe.db",
         "americas": "./data/waze_americas.db",
@@ -89,13 +124,14 @@ def get_all_dbs():
         "africa": "./data/waze_africa.db",
     }
     dbs = []
-    for region, path in DB_PATHS.items():
+    for region, path in db_paths.items():
         if os.path.exists(path):
             try:
                 dbs.append((region, Database(path)))
             except Exception:
                 pass
     return dbs
+
 
 # === Worldwide Collection System ===
 
@@ -108,8 +144,16 @@ status_lock = threading.Lock()
 checkpoint_lock = threading.Lock()
 
 
-def write_status(region: str, cell_name: str, country: str, cell_idx: int, total_cells: int,
-                 alerts_count: int, new_count: int, event_types: list = None):
+def write_status(
+    region: str,
+    cell_name: str,
+    country: str,
+    cell_idx: int,
+    total_cells: int,
+    alerts_count: int,
+    new_count: int,
+    event_types: list = None,
+):
     """Write current collector status to file for UI consumption (thread-safe)."""
     try:
         status = {
@@ -122,7 +166,7 @@ def write_status(region: str, cell_name: str, country: str, cell_idx: int, total
             "alerts_found": alerts_count,
             "new_events": new_count,
             "event_types": event_types or [],
-            "status": "scanning"
+            "status": "scanning",
         }
         with status_lock:
             with open(STATUS_FILE, "w") as f:
@@ -148,7 +192,7 @@ def save_checkpoint(cycle: int, scanned: dict):
         checkpoint = {
             "cycle": cycle,
             "scanned": scanned,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         with checkpoint_lock:
             with open(CHECKPOINT_FILE, "w") as f:
@@ -166,10 +210,12 @@ def clear_checkpoint():
         pass
 
 
-def generate_event_hash(username: str, latitude: float, longitude: float,
-                        timestamp_ms: int, report_type: str) -> str:
+def generate_event_hash(
+    username: str, latitude: float, longitude: float, timestamp_ms: int, report_type: str
+) -> str:
     """Generate unique hash for event deduplication."""
     import hashlib
+
     timestamp_minute = timestamp_ms // 60000
     data = f"{username}|{round(latitude, 4)}|{round(longitude, 4)}|{timestamp_minute}|{report_type}"
     return hashlib.sha256(data.encode()).hexdigest()[:16]
@@ -184,9 +230,7 @@ def process_alert(alert: dict, grid_cell: str) -> dict:
     report_type = alert.get("type", "UNKNOWN")
     subtype = alert.get("subtype")
 
-    timestamp_utc = datetime.fromtimestamp(
-        timestamp_ms / 1000, tz=timezone.utc
-    ).isoformat()
+    timestamp_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
 
     return {
         "event_hash": generate_event_hash(username, latitude, longitude, timestamp_ms, report_type),
@@ -199,14 +243,16 @@ def process_alert(alert: dict, grid_cell: str) -> dict:
         "subtype": subtype,
         "raw_json": json.dumps(alert),
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "grid_cell": grid_cell
+        "grid_cell": grid_cell,
     }
 
 
 class RegionScanner:
     """Scanner for a specific region."""
 
-    def __init__(self, name: str, config_path: str, db, client, logger, threads_per_region: int = 1):
+    def __init__(
+        self, name: str, config_path: str, db, client, logger, threads_per_region: int = 1
+    ):
         self.name = name
         self.config_path = config_path
         self.db = db
@@ -229,8 +275,13 @@ class RegionScanner:
     def get_cell_counts(self) -> dict:
         return {p: len(cells) for p, cells in self.cells_by_priority.items()}
 
-    def scan(self, priority: int, running_flag, already_scanned: set = None,
-             on_cell_scanned: callable = None) -> dict:
+    def scan(
+        self,
+        priority: int,
+        running_flag,
+        already_scanned: set = None,
+        on_cell_scanned: callable = None,
+    ) -> dict:
         """Scan cells of given priority, skipping already-scanned cells."""
         cells = self.cells_by_priority.get(priority, [])
         stats = {"requests": 0, "errors": 0, "events": 0, "cells": len(cells), "scanned_cells": []}
@@ -238,36 +289,51 @@ class RegionScanner:
         already_scanned = already_scanned or set()
 
         # Filter out already-scanned cells
-        remaining_cells = [(idx, cell) for idx, cell in enumerate(cells, 1)
-                          if cell["name"] not in already_scanned]
+        remaining_cells = [
+            (idx, cell) for idx, cell in enumerate(cells, 1) if cell["name"] not in already_scanned
+        ]
 
         if len(remaining_cells) < len(cells):
             skipped = len(cells) - len(remaining_cells)
-            console.print(f"  [dim]Resuming: skipping {skipped} cells, {len(remaining_cells)} remaining[/dim]")
+            console.print(
+                f"  [dim]Resuming: skipping {skipped} cells, {len(remaining_cells)} remaining[/dim]"
+            )
 
         # Use parallel scanning if threads_per_region > 1
         if self.threads_per_region > 1:
-            return self._scan_parallel(remaining_cells, total_cells, running_flag, on_cell_scanned, stats)
+            return self._scan_parallel(
+                remaining_cells, total_cells, running_flag, on_cell_scanned, stats
+            )
         else:
-            return self._scan_sequential(remaining_cells, total_cells, running_flag, on_cell_scanned, stats)
+            return self._scan_sequential(
+                remaining_cells, total_cells, running_flag, on_cell_scanned, stats
+            )
 
     def _scan_cell(self, idx: int, cell: dict, total_cells: int) -> dict:
         """Scan a single cell and return results."""
         cell_name = cell["name"]
         country = cell.get("country", "??")
-        result = {"requests": 1, "errors": 0, "events": 0, "cell_name": cell_name, "new_events": [], "alerts_count": 0}
+        result = {
+            "requests": 1,
+            "errors": 0,
+            "events": 0,
+            "cell_name": cell_name,
+            "new_events": [],
+            "alerts_count": 0,
+        }
 
         try:
             alerts, _ = self.client.get_traffic_notifications(
                 lat_top=cell["lat_top"],
                 lat_bottom=cell["lat_bottom"],
                 lon_left=cell["lon_left"],
-                lon_right=cell["lon_right"]
+                lon_right=cell["lon_right"],
             )
             result["alerts_count"] = len(alerts)
 
             for alert in alerts:
                 event = process_alert(alert, cell_name)
+                event["region"] = self.name
                 if self.db.insert_event(event):
                     result["events"] += 1
                     result["new_events"].append(event)
@@ -293,8 +359,11 @@ class RegionScanner:
             on_cell_scanned(cell_name)
 
         if result["errors"] > 0:
-            console.print(f"  [bold red]ERROR[/bold red] [{result['idx']:3}/{result['total_cells']}] {cell_name:25} -> {result.get('error_msg', 'Unknown')}")
-            self.logger.error(f"ERROR [{result['idx']:3}/{result['total_cells']}] {cell_name:25} -> {result.get('error_msg', 'Unknown')}")
+            idx = result["idx"]
+            tot = result["total_cells"]
+            err = result.get("error_msg", "Unknown")
+            console.print(f"  [bold red]ERROR[/bold red] [{idx:3}/{tot}] {cell_name:25} -> {err}")
+            self.logger.error(f"ERROR [{idx:3}/{tot}] {cell_name:25} -> {err}")
             return
 
         # Log each new event individually
@@ -329,11 +398,17 @@ class RegionScanner:
                 total_cells=result["total_cells"],
                 alerts_count=result["alerts_count"],
                 new_count=result["events"],
-                event_types=event_types
+                event_types=event_types,
             )
 
-    def _scan_sequential(self, remaining_cells: list, total_cells: int, running_flag,
-                        on_cell_scanned: callable, stats: dict) -> dict:
+    def _scan_sequential(
+        self,
+        remaining_cells: list,
+        total_cells: int,
+        running_flag,
+        on_cell_scanned: callable,
+        stats: dict,
+    ) -> dict:
         """Scan cells sequentially."""
         for idx, cell in remaining_cells:
             if not running_flag():
@@ -349,10 +424,17 @@ class RegionScanner:
 
         return stats
 
-    def _scan_parallel(self, remaining_cells: list, total_cells: int, running_flag,
-                      on_cell_scanned: callable, stats: dict) -> dict:
+    def _scan_parallel(
+        self,
+        remaining_cells: list,
+        total_cells: int,
+        running_flag,
+        on_cell_scanned: callable,
+        stats: dict,
+    ) -> dict:
         """Scan cells in parallel using ThreadPoolExecutor."""
         import threading
+
         stats_lock = threading.Lock()
 
         with ThreadPoolExecutor(max_workers=self.threads_per_region) as executor:
@@ -422,13 +504,21 @@ class CLIWorldwideCollector:
         self.logger.handlers.clear()
 
         # File handler - always write to log file
-        file_handler = logging.FileHandler('logs/cli_collector.log')
-        file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        file_handler = logging.FileHandler("logs/cli_collector.log")
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
         self.logger.addHandler(file_handler)
 
         # Console handler - for interactive mode
         console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        console_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
         self.logger.addHandler(console_handler)
 
         # Prevent propagation to root logger
@@ -461,7 +551,9 @@ class CLIWorldwideCollector:
                     module = __import__(module_name)
                     getattr(module, func_name)()
                 except ImportError:
-                    console.print(f"[yellow]Could not import {module_name}, skipping {region_name}[/yellow]")
+                    console.print(
+                        f"[yellow]Could not import {module_name}, skipping {region_name}[/yellow]"
+                    )
 
     def _save_pid(self):
         with open(PID_FILE, "w") as f:
@@ -485,10 +577,12 @@ class CLIWorldwideCollector:
 
     def _start_web_server(self):
         """Start Flask web server in a background thread."""
+
         def run_flask():
             # Suppress Flask's default logging
             import logging as flask_logging
-            flask_log = flask_logging.getLogger('werkzeug')
+
+            flask_log = flask_logging.getLogger("werkzeug")
             flask_log.setLevel(flask_logging.WARNING)
 
             # Add project root to path for web module import
@@ -496,11 +590,18 @@ class CLIWorldwideCollector:
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
             from web.app import app
-            app.run(host="0.0.0.0", port=self.web_port, debug=False, threaded=True, use_reloader=False)
+
+            app.run(
+                host="0.0.0.0", port=self.web_port, debug=False, threaded=True, use_reloader=False
+            )
 
         web_thread = threading.Thread(target=run_flask, daemon=True)
         web_thread.start()
-        console.print(f"[bold green]Web UI started at[/bold green] [bold underline blue]http://localhost:{self.web_port}[/bold underline blue]")
+        url = f"http://localhost:{self.web_port}"
+        console.print(
+            f"[bold green]Web UI started at[/bold green]"
+            f" [bold underline blue]{url}[/bold underline blue]"
+        )
         return web_thread
 
     def run(self):
@@ -528,11 +629,13 @@ class CLIWorldwideCollector:
 
         # Initialize scanners - Rich banner
         console.print()
-        console.print(Panel.fit(
-            "[bold white]WAZE WORLDWIDE COLLECTOR[/bold white]",
-            border_style="blue",
-            padding=(0, 2)
-        ))
+        console.print(
+            Panel.fit(
+                "[bold white]WAZE WORLDWIDE COLLECTOR[/bold white]",
+                border_style="blue",
+                padding=(0, 2),
+            )
+        )
         console.print()
 
         total_p1 = 0
@@ -540,13 +643,17 @@ class CLIWorldwideCollector:
 
         for region_name, config_path, db_path in regions_to_scan:
             if not os.path.exists(config_path):
-                console.print(f"[yellow]Config not found: {config_path}, skipping {region_name}[/yellow]")
+                console.print(
+                    f"[yellow]Config not found: {config_path}, skipping {region_name}[/yellow]"
+                )
                 continue
 
             db = Database(db_path, check_same_thread=False)
             client = WazeClient()
 
-            scanner = RegionScanner(region_name, config_path, db, client, self.logger, self.threads_per_region)
+            scanner = RegionScanner(
+                region_name, config_path, db, client, self.logger, self.threads_per_region
+            )
             self.scanners[region_name] = scanner
             self.databases[region_name] = db
             self.clients[region_name] = client
@@ -570,10 +677,7 @@ class CLIWorldwideCollector:
             p3 = counts.get(3, 0)
             region_style = REGION_COLORS.get(region_name, "white")
             region_table.add_row(
-                Text(region_name.upper(), style=region_style),
-                str(p1),
-                str(p3),
-                str(p1 + p3)
+                Text(region_name.upper(), style=region_style), str(p1), str(p3), str(p1 + p3)
             )
 
         region_table.add_row("", "", "", "", style="dim")
@@ -581,7 +685,7 @@ class CLIWorldwideCollector:
             Text("TOTAL", style="bold white"),
             Text(str(total_p1), style="bold cyan"),
             Text(str(total_p3), style="bold yellow"),
-            Text(str(total_p1 + total_p3), style="bold green")
+            Text(str(total_p1 + total_p3), style="bold green"),
         )
         console.print(region_table)
         console.print()
@@ -590,8 +694,12 @@ class CLIWorldwideCollector:
         strategy_text = Text()
         strategy_text.append("Collection Strategy ", style="bold")
         strategy_text.append("(MULTITHREADED)\n", style="bold cyan")
-        strategy_text.append("  • All regions scanned in PARALLEL for P1 (city) scans\n", style="dim")
-        strategy_text.append("  • Full P3 (coverage) scan every 10 cycles (parallel)\n", style="dim")
+        strategy_text.append(
+            "  • All regions scanned in PARALLEL for P1 (city) scans\n", style="dim"
+        )
+        strategy_text.append(
+            "  • Full P3 (coverage) scan every 10 cycles (parallel)\n", style="dim"
+        )
         strategy_text.append("  • 10 second pause between cycles\n", style="dim")
         if self.web_port:
             strategy_text.append("  • Web UI at ", style="dim")
@@ -604,6 +712,7 @@ class CLIWorldwideCollector:
 
         # Log startup
         self.log(f"Worldwide collector started (PID {os.getpid()})")
+
         def handle_signal(signum, frame):
             console.print("\n[bold yellow]Shutdown signal received...[/bold yellow]")
             self.log("Shutdown signal received...")
@@ -615,7 +724,10 @@ class CLIWorldwideCollector:
         region_names = list(self.scanners.keys())
 
         if not region_names:
-            console.print("[bold red]Error:[/bold red] No regions configured. Add regions using 'waze region add <name>'")
+            console.print(
+                "[bold red]Error:[/bold red] No regions configured."
+                " Add regions using 'waze region add <name>'"
+            )
             self.log("Fatal error: no regions configured")
             return
 
@@ -632,15 +744,23 @@ class CLIWorldwideCollector:
         if cycle > 0:
             console.print(f"[bold yellow]Resuming from checkpoint:[/bold yellow] cycle {cycle}")
 
-        def scan_region(region_name: str, priority: int, today: str, already_scanned: set,
-                        checkpoint_key: str) -> dict:
+        def scan_region(
+            region_name: str, priority: int, today: str, already_scanned: set, checkpoint_key: str
+        ) -> dict:
             """Scan a single region (runs in thread)."""
             scanner = self.scanners[region_name]
             db = self.databases[region_name]
 
             p_count = scanner.get_cell_counts().get(priority, 0)
             if p_count == 0:
-                return {"region": region_name, "events": 0, "errors": 0, "requests": 0, "cells": 0, "scanned_cells": []}
+                return {
+                    "region": region_name,
+                    "events": 0,
+                    "errors": 0,
+                    "requests": 0,
+                    "cells": 0,
+                    "scanned_cells": [],
+                }
 
             def on_cell_scanned(cell_name):
                 with checkpoint_lock:
@@ -656,7 +776,7 @@ class CLIWorldwideCollector:
                 events=stats["events"],
                 requests=stats["requests"],
                 errors=stats["errors"],
-                cells=stats["cells"]
+                cells=stats["cells"],
             )
 
             return {"region": region_name, **stats}
@@ -670,7 +790,12 @@ class CLIWorldwideCollector:
                 console.rule(f"[bold]CYCLE {cycle}[/bold] [dim](PARALLEL MODE)[/dim]", style="blue")
 
                 # Parallel P1 scan
-                console.print(f"[dim]Starting parallel P1 scan across[/dim] [bold cyan]{len(region_names)}[/bold cyan] [dim]regions...[/dim]")
+                n_regions = len(region_names)
+                console.print(
+                    f"[dim]Starting parallel P1 scan across[/dim]"
+                    f" [bold cyan]{n_regions}[/bold cyan]"
+                    f" [dim]regions...[/dim]"
+                )
                 total_events = 0
                 total_errors = 0
                 cycle_complete = True
@@ -680,7 +805,9 @@ class CLIWorldwideCollector:
                     for region in region_names:
                         key = f"{region}_p1"
                         already_scanned = set(scanned_cells.get(key, []))
-                        futures[executor.submit(scan_region, region, 1, today, already_scanned, key)] = (region, key)
+                        futures[
+                            executor.submit(scan_region, region, 1, today, already_scanned, key)
+                        ] = (region, key)
 
                     for future in as_completed(futures):
                         region, key = futures[future]
@@ -695,13 +822,18 @@ class CLIWorldwideCollector:
                                 line.append("  [", style="dim")
                                 line.append(region.upper(), style=region_style)
                                 line.append("] ", style="dim")
-                                line.append(f"+{result['events']}", style="bold green" if result["events"] > 0 else "dim")
+                                line.append(
+                                    f"+{result['events']}",
+                                    style="bold green" if result["events"] > 0 else "dim",
+                                )
                                 line.append(" events", style="dim")
                                 if result["errors"] > 0:
                                     line.append(f", {result['errors']} errors", style="bold red")
                                 console.print(line)
                         except Exception as e:
-                            console.print(f"  [bold red][{region.upper()}] Thread error: {e}[/bold red]")
+                            console.print(
+                                f"  [bold red][{region.upper()}] Thread error: {e}[/bold red]"
+                            )
                             cycle_complete = False
 
                 summary_line = Text()
@@ -711,7 +843,9 @@ class CLIWorldwideCollector:
                 if total_errors > 0:
                     summary_line.append(f", {total_errors} errors", style="bold red")
                 console.print(summary_line)
-                self.log(f"Cycle {cycle} P1 complete: +{total_events} events, {total_errors} errors")
+                self.log(
+                    f"Cycle {cycle} P1 complete: +{total_events} events, {total_errors} errors"
+                )
 
                 if cycle_complete:
                     for region in region_names:
@@ -721,7 +855,10 @@ class CLIWorldwideCollector:
                 # Full coverage scan every 10 cycles
                 if cycle % 10 == 0 and self.running:
                     console.print()
-                    console.rule("[bold yellow]FULL COVERAGE SCAN[/bold yellow] [dim](PARALLEL)[/dim]", style="yellow")
+                    console.rule(
+                        "[bold yellow]FULL COVERAGE SCAN[/bold yellow] [dim](PARALLEL)[/dim]",
+                        style="yellow",
+                    )
                     total_p3_events = 0
 
                     with ThreadPoolExecutor(max_workers=len(region_names)) as executor:
@@ -729,7 +866,9 @@ class CLIWorldwideCollector:
                         for region in region_names:
                             key = f"{region}_p3"
                             already_scanned = set(scanned_cells.get(key, []))
-                            futures[executor.submit(scan_region, region, 3, today, already_scanned, key)] = (region, key)
+                            futures[
+                                executor.submit(scan_region, region, 3, today, already_scanned, key)
+                            ] = (region, key)
 
                         for future in as_completed(futures):
                             region, key = futures[future]
@@ -747,7 +886,9 @@ class CLIWorldwideCollector:
                                     line.append(" events", style="dim")
                                     console.print(line)
                             except Exception as e:
-                                console.print(f"  [bold red][{region.upper()}] Thread error: {e}[/bold red]")
+                                console.print(
+                                    f"  [bold red][{region.upper()}] Thread error: {e}[/bold red]"
+                                )
 
                     p3_summary = Text()
                     p3_summary.append("P3 coverage complete: ", style="bold")
@@ -771,13 +912,15 @@ class CLIWorldwideCollector:
 
                     for region_name, db in self.databases.items():
                         result = db.execute(
-                            "SELECT COUNT(*) as events, COUNT(DISTINCT username) as users FROM events"
+                            "SELECT COUNT(*) as events,"
+                            " COUNT(DISTINCT username) as users"
+                            " FROM events"
                         ).fetchone()
                         region_style = REGION_COLORS.get(region_name, "white")
                         summary_table.add_row(
                             Text(region_name.upper(), style=region_style),
                             f"{result[0]:,}",
-                            f"{result[1]:,}"
+                            f"{result[1]:,}",
                         )
                     console.print(summary_table)
 
@@ -796,6 +939,7 @@ class CLIWorldwideCollector:
 
 
 # === Collection Commands ===
+
 
 @cli.command()
 @click.option("--web", "-w", is_flag=True, help="Also start the web UI")
@@ -833,7 +977,9 @@ def collect(web, port, region):
 
 @cli.command()
 @click.option("-n", "--lines", default=50, help="Number of lines to show initially")
-@click.option("-f/-F", "--follow/--no-follow", default=True, help="Follow log output (default: follow)")
+@click.option(
+    "-f/-F", "--follow/--no-follow", default=True, help="Follow log output (default: follow)"
+)
 def logs(lines, follow):
     """Watch live collector logs.
 
@@ -890,6 +1036,7 @@ def logs(lines, follow):
     def colorize_log_line(line):
         """Colorize a log line using Rich."""
         import re
+
         line = line.rstrip()
         if not line:
             return
@@ -898,7 +1045,9 @@ def logs(lines, follow):
         text = Text()
 
         # Check for event line pattern: "  + TYPE @ coords - user"
-        event_match = re.match(r'^(.*\[INFO\])\s+(\+)\s+(\w+)\s+(@)\s+([\d.-]+,\s*[\d.-]+)(.*)$', line)
+        event_match = re.match(
+            r"^(.*\[INFO\])\s+(\+)\s+(\w+)\s+(@)\s+([\d.-]+,\s*[\d.-]+)(.*)$", line
+        )
         if event_match:
             prefix, plus, etype, at, coords, rest = event_match.groups()
             text.append(prefix + " ", style="dim")
@@ -941,7 +1090,9 @@ def logs(lines, follow):
         if follow:
             # Use tail -f to follow the log
             cmd = ["tail", "-n", str(lines), "-f", log_file]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
 
             try:
                 for line in process.stdout:
@@ -953,7 +1104,7 @@ def logs(lines, follow):
             # Just show last N lines
             cmd = ["tail", "-n", str(lines), log_file]
             result = subprocess.run(cmd, capture_output=True, text=True)
-            for line in result.stdout.split('\n'):
+            for line in result.stdout.split("\n"):
                 colorize_log_line(line)
 
     except Exception as e:
@@ -968,7 +1119,9 @@ def logs(lines, follow):
 @click.option("--port", "-p", default=5000, help="Web UI port (default: 5000)")
 @click.option("--background", "-b", is_flag=True, help="Run in background (daemonize)")
 @click.option("--region", "-r", multiple=True, help="Specific regions to scan (can be repeated)")
-@click.option("--threads", "-t", default=4, help="Threads per region for parallel cell scanning (default: 4)")
+@click.option(
+    "--threads", "-t", default=4, help="Threads per region for parallel cell scanning (default: 4)"
+)
 def start(madrid, europe, web, no_web, port, background, region, threads):
     """Start the worldwide collector daemon.
 
@@ -988,6 +1141,7 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
 
     if background:
         import subprocess
+
         cmd = [sys.executable, __file__, "start"]
         if madrid:
             cmd.append("--madrid")
@@ -1007,7 +1161,7 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            start_new_session=True
+            start_new_session=True,
         )
         click.echo("Collector started in background")
         if enable_web:
@@ -1018,6 +1172,7 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
     if madrid:
         # Legacy Madrid-only collector
         from collector import Collector
+
         pid = Collector.get_pid()
         if pid:
             click.echo(f"Madrid collector already running (PID {pid})")
@@ -1030,6 +1185,7 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
     elif europe:
         # Legacy Europe collector
         from collector_europe import EuropeCollector
+
         pid = EuropeCollector.get_pid()
         if pid:
             click.echo(f"Europe collector already running (PID {pid})")
@@ -1050,7 +1206,9 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
         click.echo(f"Starting worldwide collector with {threads} threads per region...")
         if enable_web:
             click.echo(f"Web UI will be available at http://localhost:{port}")
-        collector = CLIWorldwideCollector(web_port=web_port, regions=selected_regions, threads_per_region=threads)
+        collector = CLIWorldwideCollector(
+            web_port=web_port, regions=selected_regions, threads_per_region=threads
+        )
         collector.run()
 
 
@@ -1074,6 +1232,7 @@ def stop(madrid, europe):
         click.echo("Stop signal sent")
     elif europe:
         from collector_europe import EuropeCollector
+
         pid = EuropeCollector.get_pid()
         if not pid:
             click.echo("Europe collector is not running")
@@ -1097,6 +1256,7 @@ def stop(madrid, europe):
         else:
             click.echo("No collector is running")
 
+
 @cli.command()
 @click.option("--all", "-a", "show_all", is_flag=True, help="Show all regional databases")
 def status(show_all):
@@ -1108,14 +1268,19 @@ def status(show_all):
     madrid_pid = Collector.get_pid()
 
     click.echo("=== Collector Status ===")
-    click.echo(f"Worldwide: {'Running (PID ' + str(worldwide_pid) + ')' if worldwide_pid else 'Stopped'}")
+    click.echo(
+        f"Worldwide: {'Running (PID ' + str(worldwide_pid) + ')' if worldwide_pid else 'Stopped'}"
+    )
     click.echo(f"Madrid:    {'Running (PID ' + str(madrid_pid) + ')' if madrid_pid else 'Stopped'}")
 
     # Check for Europe collector
     try:
         from collector_europe import EuropeCollector
+
         europe_pid = EuropeCollector.get_pid()
-        click.echo(f"Europe:    {'Running (PID ' + str(europe_pid) + ')' if europe_pid else 'Stopped'}")
+        click.echo(
+            f"Europe:    {'Running (PID ' + str(europe_pid) + ')' if europe_pid else 'Stopped'}"
+        )
     except ImportError:
         pass
 
@@ -1170,13 +1335,15 @@ def status(show_all):
                     if last_event is None or row["last_event"] > last_event:
                         last_event = row["last_event"]
 
-                table.append([
-                    region.upper(),
-                    f"{events:,}",
-                    f"{users:,}",
-                    row["first_event"][:10] if row["first_event"] else "N/A",
-                    row["last_event"][:10] if row["last_event"] else "N/A"
-                ])
+                table.append(
+                    [
+                        region.upper(),
+                        f"{events:,}",
+                        f"{users:,}",
+                        row["first_event"][:10] if row["first_event"] else "N/A",
+                        row["last_event"][:10] if row["last_event"] else "N/A",
+                    ]
+                )
 
                 db.close()
             except Exception as e:
@@ -1204,19 +1371,20 @@ def status(show_all):
 
         if os.path.exists(config["database_path"]):
             from analysis import get_stats
+
             db = get_db()
             stats = get_stats(db)
 
             click.echo(f"Total events: {stats['total_events']:,}")
             click.echo(f"Unique users: {stats['unique_users']:,}")
 
-            if stats['first_event']:
+            if stats["first_event"]:
                 click.echo(f"Time range: {stats['first_event'][:19]} -> {stats['last_event'][:19]}")
 
-            if stats['by_type']:
+            if stats["by_type"]:
                 click.echo("\nBy type:")
-                for t, count in sorted(stats['by_type'].items(), key=lambda x: -x[1]):
-                    pct = count / stats['total_events'] * 100 if stats['total_events'] else 0
+                for t, count in sorted(stats["by_type"].items(), key=lambda x: -x[1]):
+                    pct = count / stats["total_events"] * 100 if stats["total_events"] else 0
                     click.echo(f"  {t:12} {count:>6,} ({pct:.1f}%)")
 
             db.close()
@@ -1225,7 +1393,9 @@ def status(show_all):
 
         click.echo("\nTip: Use 'waze status --all' to see all regional databases")
 
+
 # === Data Exploration Commands ===
+
 
 @cli.command()
 def stats():
@@ -1238,17 +1408,18 @@ def stats():
     click.echo(f"Total events: {s['total_events']:,}")
     click.echo(f"Unique users: {s['unique_users']:,}")
 
-    if s['first_event']:
+    if s["first_event"]:
         click.echo(f"First event: {s['first_event'][:19]}")
         click.echo(f"Last event: {s['last_event'][:19]}")
 
-    if s['by_type']:
+    if s["by_type"]:
         click.echo("\nBy type:")
-        for t, count in sorted(s['by_type'].items(), key=lambda x: -x[1]):
-            pct = count / s['total_events'] * 100 if s['total_events'] else 0
+        for t, count in sorted(s["by_type"].items(), key=lambda x: -x[1]):
+            pct = count / s["total_events"] * 100 if s["total_events"] else 0
             click.echo(f"  {t:12} {count:>6,} ({pct:.1f}%)")
 
     db.close()
+
 
 @cli.command()
 @click.option("-n", "--limit", default=20, help="Number of events to show")
@@ -1265,16 +1436,19 @@ def recent(limit):
 
     table = []
     for e in events:
-        table.append([
-            e["timestamp_utc"][:19],
-            e["username"][:20],
-            e["report_type"],
-            f"{e['latitude']:.4f}",
-            f"{e['longitude']:.4f}"
-        ])
+        table.append(
+            [
+                e["timestamp_utc"][:19],
+                e["username"][:20],
+                e["report_type"],
+                f"{e['latitude']:.4f}",
+                f"{e['longitude']:.4f}",
+            ]
+        )
 
     click.echo(tabulate(table, headers=["Time", "User", "Type", "Lat", "Lon"]))
     db.close()
+
 
 @cli.command()
 @click.option("-u", "--username", help="Filter by username")
@@ -1300,11 +1474,11 @@ def search(username, report_type, since, limit):
         # Parse time filter
         unit = since[-1]
         value = int(since[:-1])
-        if unit == 'h':
+        if unit == "h":
             delta = timedelta(hours=value)
-        elif unit == 'd':
+        elif unit == "d":
             delta = timedelta(days=value)
-        elif unit == 'm':
+        elif unit == "m":
             delta = timedelta(minutes=value)
         else:
             click.echo(f"Unknown time unit: {unit}")
@@ -1325,19 +1499,23 @@ def search(username, report_type, since, limit):
 
     table = []
     for r in rows:
-        table.append([
-            r["timestamp_utc"][:19],
-            r["username"][:20],
-            r["report_type"],
-            f"{r['latitude']:.4f}",
-            f"{r['longitude']:.4f}"
-        ])
+        table.append(
+            [
+                r["timestamp_utc"][:19],
+                r["username"][:20],
+                r["report_type"],
+                f"{r['latitude']:.4f}",
+                f"{r['longitude']:.4f}",
+            ]
+        )
 
     click.echo(tabulate(table, headers=["Time", "User", "Type", "Lat", "Lon"]))
     click.echo(f"\n{len(rows)} events found")
     db.close()
 
+
 # === User Analysis Commands ===
+
 
 @cli.command()
 @click.option("-n", "--limit", default=50, help="Number of users to show")
@@ -1354,15 +1532,13 @@ def users(limit):
 
     table = []
     for u in user_list:
-        table.append([
-            u["username"][:25],
-            u["event_count"],
-            u["first_seen"][:10],
-            u["last_seen"][:10]
-        ])
+        table.append(
+            [u["username"][:25], u["event_count"], u["first_seen"][:10], u["last_seen"][:10]]
+        )
 
     click.echo(tabulate(table, headers=["Username", "Events", "First Seen", "Last Seen"]))
     db.close()
+
 
 @cli.command()
 @click.argument("username")
@@ -1381,25 +1557,31 @@ def profile(username):
     click.echo(f"Events: {p['event_count']}")
     click.echo(f"First seen: {p['first_seen'][:19]}")
     click.echo(f"Last seen: {p['last_seen'][:19]}")
-    click.echo(f"Center location: {p['center_location']['lat']:.4f}, {p['center_location']['lon']:.4f}")
+    click.echo(
+        f"Center location: {p['center_location']['lat']:.4f}, {p['center_location']['lon']:.4f}"
+    )
 
     click.echo("\nReport types:")
-    for t, count in sorted(p['type_breakdown'].items(), key=lambda x: -x[1]):
+    for t, count in sorted(p["type_breakdown"].items(), key=lambda x: -x[1]):
         click.echo(f"  {t}: {count}")
 
     click.echo("\nRecent events:")
     table = []
-    for e in p['events'][-10:]:
-        table.append([
-            e["timestamp_utc"][:19],
-            e["report_type"],
-            f"{e['latitude']:.4f}, {e['longitude']:.4f}"
-        ])
+    for e in p["events"][-10:]:
+        table.append(
+            [
+                e["timestamp_utc"][:19],
+                e["report_type"],
+                f"{e['latitude']:.4f}, {e['longitude']:.4f}",
+            ]
+        )
     click.echo(tabulate(table, headers=["Time", "Type", "Location"]))
 
     db.close()
 
+
 # === Export Commands ===
+
 
 @cli.command()
 @click.option("--format", "fmt", type=click.Choice(["csv", "geojson"]), default="csv")
@@ -1432,19 +1614,21 @@ def export(fmt, output):
     elif fmt == "geojson":
         features = []
         for row in rows:
-            features.append({
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [row["longitude"], row["latitude"]]
-                },
-                "properties": {
-                    "username": row["username"],
-                    "timestamp": row["timestamp_utc"],
-                    "type": row["report_type"],
-                    "subtype": row["subtype"]
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [row["longitude"], row["latitude"]],
+                    },
+                    "properties": {
+                        "username": row["username"],
+                        "timestamp": row["timestamp_utc"],
+                        "type": row["report_type"],
+                        "subtype": row["subtype"],
+                    },
                 }
-            })
+            )
 
         geojson = {"type": "FeatureCollection", "features": features}
         with open(output, "w") as f:
@@ -1453,7 +1637,9 @@ def export(fmt, output):
     click.echo(f"Exported {len(rows)} events to {output}")
     db.close()
 
+
 # === Config Commands ===
+
 
 @cli.command()
 @click.option("--interval", type=int, help="Set polling interval in seconds")
@@ -1472,6 +1658,7 @@ def config(interval):
 
 # === Collection Stats Commands ===
 
+
 @cli.command()
 @click.option("-n", "--days", default=7, help="Number of days to show")
 @click.option("--all", "-a", "show_all", is_flag=True, help="Show all regional databases")
@@ -1487,17 +1674,25 @@ def daily(days, show_all):
                 for s in stats:
                     date = s["date"]
                     if date not in daily_stats:
-                        daily_stats[date] = {"events": 0, "users": set(), "requests": 0, "errors": 0}
+                        daily_stats[date] = {
+                            "events": 0,
+                            "users": set(),
+                            "requests": 0,
+                            "errors": 0,
+                        }
                     daily_stats[date]["events"] += s.get("events_collected", 0)
                     daily_stats[date]["requests"] += s.get("api_requests", 0)
                     daily_stats[date]["errors"] += s.get("api_errors", 0)
 
                 # Get unique users per day
                 for date in daily_stats.keys():
-                    user_rows = db.execute("""
+                    user_rows = db.execute(
+                        """
                         SELECT DISTINCT username FROM events
                         WHERE DATE(timestamp_utc) = ?
-                    """, (date,)).fetchall()
+                    """,
+                        (date,),
+                    ).fetchall()
                     for u in user_rows:
                         daily_stats[date]["users"].add(u["username"])
 
@@ -1512,13 +1707,15 @@ def daily(days, show_all):
         table = []
         for date in sorted(daily_stats.keys(), reverse=True):
             s = daily_stats[date]
-            table.append([
-                date,
-                f"{s['events']:,}",
-                f"{len(s['users']):,}",
-                f"{s['requests']:,}",
-                f"{s['errors']:,}",
-            ])
+            table.append(
+                [
+                    date,
+                    f"{s['events']:,}",
+                    f"{len(s['users']):,}",
+                    f"{s['requests']:,}",
+                    f"{s['errors']:,}",
+                ]
+            )
 
         click.echo("=== Worldwide Daily Statistics ===")
         click.echo(tabulate(table, headers=["Date", "Events", "Users", "Requests", "Errors"]))
@@ -1533,13 +1730,15 @@ def daily(days, show_all):
 
         table = []
         for s in stats:
-            table.append([
-                s["date"],
-                f"{s['events_collected']:,}",
-                f"{s['unique_users']:,}",
-                f"{s['api_requests']:,}",
-                f"{s['api_errors']:,}",
-            ])
+            table.append(
+                [
+                    s["date"],
+                    f"{s['events_collected']:,}",
+                    f"{s['unique_users']:,}",
+                    f"{s['api_requests']:,}",
+                    f"{s['api_errors']:,}",
+                ]
+            )
 
         click.echo(tabulate(table, headers=["Date", "Events", "Users", "Requests", "Errors"]))
         db.close()
@@ -1555,8 +1754,9 @@ def web(port):
     click.echo(f"Starting web UI at http://localhost:{port}")
     click.echo("Press Ctrl+C to stop")
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'web'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "web"))
     from web.app import app
+
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
 
 
@@ -1580,8 +1780,8 @@ def summary():
     for region, db in dbs:
         try:
             s = db.get_collection_summary()
-            if s and s.get('total_events'):
-                total_events += s['total_events']
+            if s and s.get("total_events"):
+                total_events += s["total_events"]
 
                 # Get unique users
                 user_rows = db.execute("SELECT DISTINCT username FROM events").fetchall()
@@ -1603,14 +1803,14 @@ def summary():
                 for c in cell_rows:
                     grid_cells.add(c["grid_cell"])
 
-                if s['first_event']:
-                    if first_event is None or s['first_event'] < first_event:
-                        first_event = s['first_event']
-                if s['last_event']:
-                    if last_event is None or s['last_event'] > last_event:
-                        last_event = s['last_event']
+                if s["first_event"]:
+                    if first_event is None or s["first_event"] < first_event:
+                        first_event = s["first_event"]
+                if s["last_event"]:
+                    if last_event is None or s["last_event"] > last_event:
+                        last_event = s["last_event"]
 
-                region_stats.append((region, s['total_events'], s['unique_users']))
+                region_stats.append((region, s["total_events"], s["unique_users"]))
 
             db.close()
         except Exception as e:
@@ -1651,12 +1851,14 @@ def tracked(limit):
 
     table = []
     for u in users:
-        table.append([
-            u["username"][:25],
-            f"{u['event_count']:,}",
-            u["first_seen"][:10],
-            u["last_seen"][:10],
-        ])
+        table.append(
+            [
+                u["username"][:25],
+                f"{u['event_count']:,}",
+                u["first_seen"][:10],
+                u["last_seen"][:10],
+            ]
+        )
 
     click.echo(tabulate(table, headers=["Username", "Events", "First Seen", "Last Seen"]))
     db.close()
