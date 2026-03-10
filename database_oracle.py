@@ -92,13 +92,14 @@ class Database:
                 """
                 INSERT INTO events (
                     event_hash, username, latitude, longitude,
-                    timestamp_utc, collected_at,
-                    event_type, subtype, region, raw_json
+                    timestamp_utc, timestamp_ms, collected_at,
+                    report_type, subtype, region, grid_cell, raw_json
                 ) VALUES (
                     :1, :2, :3, :4,
                     TO_TIMESTAMP_TZ(:5, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-                    TO_TIMESTAMP_TZ(:6, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-                    :7, :8, :9, :10
+                    :6,
+                    TO_TIMESTAMP_TZ(:7, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                    :8, :9, :10, :11, :12
                 )
                 """,
                 [
@@ -107,10 +108,12 @@ class Database:
                     event["latitude"],
                     event["longitude"],
                     event["timestamp_utc"],
+                    event.get("timestamp_ms"),
                     event["collected_at"],
                     event["report_type"],
                     event.get("subtype"),
                     event["region"],
+                    event.get("grid_cell"),
                     event.get("raw_json"),
                 ],
             )

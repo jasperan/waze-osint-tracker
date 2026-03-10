@@ -33,7 +33,7 @@ ALTER SESSION SET CURRENT_SCHEMA = waze;
 CREATE TABLE waze.events (
     event_id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_hash      VARCHAR2(64) NOT NULL,
-    event_type      VARCHAR2(50),
+    report_type     VARCHAR2(50),
     subtype         VARCHAR2(100),
     severity        NUMBER(1),
     reliability     NUMBER(2),
@@ -48,7 +48,9 @@ CREATE TABLE waze.events (
     report_rating   NUMBER(3),
     report_mood     NUMBER(2),
     timestamp_utc   TIMESTAMP DEFAULT SYSTIMESTAMP,
+    timestamp_ms    NUMBER(15),
     collected_at    TIMESTAMP DEFAULT SYSTIMESTAMP,
+    grid_cell       VARCHAR2(200),
     speed           NUMBER(6,2),
     road_type       NUMBER(2),
     magvar          NUMBER(6,2),
@@ -67,7 +69,7 @@ PARTITION BY LIST (region) (
 
 CREATE INDEX idx_events_username ON waze.events (username) LOCAL;
 CREATE INDEX idx_events_timestamp ON waze.events (timestamp_utc) LOCAL;
-CREATE INDEX idx_events_type ON waze.events (event_type) LOCAL;
+CREATE INDEX idx_events_type ON waze.events (report_type) LOCAL;
 CREATE INDEX idx_events_location ON waze.events (latitude, longitude) LOCAL;
 CREATE INDEX idx_events_city ON waze.events (city) LOCAL;
 
@@ -97,7 +99,7 @@ CREATE TABLE waze.tracked_users (
     username        VARCHAR2(200) NOT NULL,
     first_seen      TIMESTAMP DEFAULT SYSTIMESTAMP,
     last_seen       TIMESTAMP DEFAULT SYSTIMESTAMP,
-    total_events    NUMBER DEFAULT 1,
+    event_count     NUMBER DEFAULT 1,
     region_list     VARCHAR2(500),
     is_flagged      NUMBER(1) DEFAULT 0,
     notes           CLOB,
@@ -130,14 +132,25 @@ CREATE INDEX idx_daily_stats_date ON waze.daily_stats (stat_date);
 -- USER_BEHAVIORAL_VECTORS — 44-dimensional behavioral fingerprint per user
 -- =============================================================================
 CREATE TABLE waze.user_behavioral_vectors (
-    vector_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    username        VARCHAR2(200) NOT NULL,
-    behavior_vector VECTOR(44, FLOAT32),
-    computed_at     TIMESTAMP DEFAULT SYSTIMESTAMP,
-    event_count     NUMBER DEFAULT 0,
-    time_span_days  NUMBER DEFAULT 0,
-    cluster_id      NUMBER,
-    anomaly_score   NUMBER(8,6),
+    vector_id           NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username            VARCHAR2(200) NOT NULL,
+    region              VARCHAR2(50),
+    event_count         NUMBER DEFAULT 0,
+    first_seen          TIMESTAMP WITH TIME ZONE,
+    last_seen           TIMESTAMP WITH TIME ZONE,
+    centroid_lat        NUMBER(10,6),
+    centroid_lon        NUMBER(10,6),
+    geo_spread_km       NUMBER(8,2),
+    hour_histogram      CLOB,
+    dow_histogram       CLOB,
+    type_distribution   CLOB,
+    cadence_stats       CLOB,
+    behavior_vector     VECTOR(44, FLOAT32),
+    vector_updated_at   TIMESTAMP DEFAULT SYSTIMESTAMP,
+    dossier             CLOB,
+    dossier_updated_at  TIMESTAMP,
+    cluster_id          NUMBER,
+    anomaly_score       NUMBER(8,6),
     CONSTRAINT ubv_username_uq UNIQUE (username)
 );
 
@@ -156,21 +169,21 @@ CREATE INDEX idx_ubv_anomaly ON waze.user_behavioral_vectors (anomaly_score);
 -- =============================================================================
 CREATE TABLE waze.user_co_occurrences (
     co_id           NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    username_a      VARCHAR2(200) NOT NULL,
-    username_b      VARCHAR2(200) NOT NULL,
-    co_occurrence_count NUMBER DEFAULT 1,
-    first_seen      TIMESTAMP DEFAULT SYSTIMESTAMP,
-    last_seen       TIMESTAMP DEFAULT SYSTIMESTAMP,
-    avg_distance_km NUMBER(8,4),
-    avg_time_delta_s NUMBER(10,2),
+    user_a          VARCHAR2(200) NOT NULL,
+    user_b          VARCHAR2(200) NOT NULL,
+    co_count        NUMBER DEFAULT 1,
+    first_co        TIMESTAMP DEFAULT SYSTIMESTAMP,
+    last_co         TIMESTAMP DEFAULT SYSTIMESTAMP,
+    avg_distance_m  NUMBER(10,2),
+    avg_time_gap_s  NUMBER(10,2),
     regions         VARCHAR2(500),
-    CONSTRAINT co_occ_pair_uq UNIQUE (username_a, username_b),
-    CONSTRAINT co_occ_canonical_order CHECK (username_a < username_b)
+    CONSTRAINT co_occ_pair_uq UNIQUE (user_a, user_b),
+    CONSTRAINT co_occ_canonical_order CHECK (user_a < user_b)
 );
 
-CREATE INDEX idx_co_occ_a ON waze.user_co_occurrences (username_a);
-CREATE INDEX idx_co_occ_b ON waze.user_co_occurrences (username_b);
-CREATE INDEX idx_co_occ_count ON waze.user_co_occurrences (co_occurrence_count);
+CREATE INDEX idx_co_occ_a ON waze.user_co_occurrences (user_a);
+CREATE INDEX idx_co_occ_b ON waze.user_co_occurrences (user_b);
+CREATE INDEX idx_co_occ_count ON waze.user_co_occurrences (co_count);
 
 -- =============================================================================
 -- USER_ROUTINES — Detected routine patterns for users
@@ -179,15 +192,15 @@ CREATE TABLE waze.user_routines (
     routine_id      NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username        VARCHAR2(200) NOT NULL,
     routine_type    VARCHAR2(50) NOT NULL,
-    day_of_week     NUMBER(1),
-    hour_of_day     NUMBER(2),
     latitude        NUMBER(10,6),
     longitude       NUMBER(10,6),
-    frequency       NUMBER DEFAULT 1,
     confidence      NUMBER(5,4),
+    typical_hours   CLOB,
+    typical_days    CLOB,
+    evidence_count  NUMBER DEFAULT 0,
     first_observed  TIMESTAMP DEFAULT SYSTIMESTAMP,
     last_observed   TIMESTAMP DEFAULT SYSTIMESTAMP,
-    description     VARCHAR2(1000)
+    CONSTRAINT routines_user_type_uq UNIQUE (username, routine_type)
 );
 
 CREATE INDEX idx_routines_username ON waze.user_routines (username);
@@ -198,19 +211,21 @@ CREATE INDEX idx_routines_location ON waze.user_routines (latitude, longitude);
 -- IDENTITY_CORRELATIONS — Links between potentially related users
 -- =============================================================================
 CREATE TABLE waze.identity_correlations (
-    correlation_id  NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    username_a      VARCHAR2(200) NOT NULL,
-    username_b      VARCHAR2(200) NOT NULL,
-    correlation_type VARCHAR2(50) NOT NULL,
-    score           NUMBER(5,4) NOT NULL,
-    evidence        CLOB,
-    computed_at     TIMESTAMP DEFAULT SYSTIMESTAMP,
-    CONSTRAINT id_corr_pair_type_uq UNIQUE (username_a, username_b, correlation_type)
+    correlation_id      NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_a              VARCHAR2(200) NOT NULL,
+    user_b              VARCHAR2(200) NOT NULL,
+    correlation_type    VARCHAR2(50) NOT NULL,
+    vector_similarity   NUMBER(5,4),
+    graph_score         NUMBER(5,4),
+    combined_score      NUMBER(5,4) NOT NULL,
+    explanation         CLOB,
+    computed_at         TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CONSTRAINT id_corr_pair_type_uq UNIQUE (user_a, user_b, correlation_type)
 );
 
-CREATE INDEX idx_id_corr_a ON waze.identity_correlations (username_a);
-CREATE INDEX idx_id_corr_b ON waze.identity_correlations (username_b);
-CREATE INDEX idx_id_corr_score ON waze.identity_correlations (score);
+CREATE INDEX idx_id_corr_a ON waze.identity_correlations (user_a);
+CREATE INDEX idx_id_corr_b ON waze.identity_correlations (user_b);
+CREATE INDEX idx_id_corr_score ON waze.identity_correlations (combined_score);
 
 -- =============================================================================
 -- SQL Property Graph — Social/co-occurrence graph
@@ -220,15 +235,15 @@ CREATE OR REPLACE PROPERTY GRAPH waze.waze_social_graph
         waze.tracked_users
             KEY (user_id)
             LABEL person
-            PROPERTIES (username, first_seen, last_seen, total_events, is_flagged)
+            PROPERTIES (username, first_seen, last_seen, event_count, is_flagged)
     )
     EDGE TABLES (
         waze.user_co_occurrences
             KEY (co_id)
-            SOURCE KEY (username_a) REFERENCES tracked_users (username)
-            DESTINATION KEY (username_b) REFERENCES tracked_users (username)
+            SOURCE KEY (user_a) REFERENCES tracked_users (username)
+            DESTINATION KEY (user_b) REFERENCES tracked_users (username)
             LABEL co_located
-            PROPERTIES (co_occurrence_count, first_seen, last_seen, avg_distance_km, avg_time_delta_s)
+            PROPERTIES (co_count, first_co, last_co, avg_distance_m, avg_time_gap_s)
     );
 
 -- =============================================================================

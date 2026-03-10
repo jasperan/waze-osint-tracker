@@ -1877,7 +1877,7 @@ def intel():
 @click.argument("username")
 def intel_profile(username):
     """Generate intelligence dossier for a user."""
-    from database_oracle import OracleDatabase
+    from database_oracle import Database as OracleDatabase
 
     config = load_config()
     if config.get("database_type") != "oracle":
@@ -1904,7 +1904,7 @@ def intel_profile(username):
 @click.option("--top", "-n", default=20, help="Number of top correlation pairs")
 def correlations(top):
     """Show top identity correlation pairs."""
-    from database_oracle import OracleDatabase
+    from database_oracle import Database as OracleDatabase
 
     config = load_config()
     if config.get("database_type") != "oracle":
@@ -1943,7 +1943,7 @@ def correlations(top):
 @click.option("--min-count", default=5, help="Minimum co-occurrence count")
 def convoys(min_count):
     """Show detected convoy groups."""
-    from database_oracle import OracleDatabase
+    from database_oracle import Database as OracleDatabase
 
     config = load_config()
     if config.get("database_type") != "oracle":
@@ -1983,7 +1983,7 @@ def convoys(min_count):
 @click.argument("hour", type=int)
 def predict(username, day, hour):
     """Predict user presence at a given day (0=Mon) and hour (0-23)."""
-    from database_oracle import OracleDatabase
+    from database_oracle import Database as OracleDatabase
 
     config = load_config()
     if config.get("database_type") != "oracle":
@@ -2032,7 +2032,7 @@ def predict(username, day, hour):
 @click.option("--min-events", default=20, help="Minimum events per user")
 def build(min_events):
     """Run full intelligence pipeline: vectors, routines, co-occurrence, correlations."""
-    from database_oracle import OracleDatabase
+    from database_oracle import Database as OracleDatabase
 
     config = load_config()
     if config.get("database_type") != "oracle":

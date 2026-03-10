@@ -8,7 +8,7 @@ Uses time-stratified DBSCAN clustering to infer routine locations:
 """
 
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -105,7 +105,7 @@ def infer_routines(events: List[Dict]) -> Dict[str, Dict]:
             except (ValueError, AttributeError):
                 continue
         elif ts_ms:
-            dt = datetime.utcfromtimestamp(ts_ms / 1000.0)
+            dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
         else:
             continue
 
