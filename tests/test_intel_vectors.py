@@ -138,32 +138,32 @@ def test_build_behavioral_vector_single_event():
 
 def test_vector_similarity_different_users():
     """Morning commuter vs night owl should have low similarity (< 0.5)."""
-    # Use the global bbox to amplify geographic differences
-    global_bbox = REGION_BBOXES["global"]
+    # Custom bbox placing user A near (0,0) and user B near (1,1) in normalized space
+    bbox = (0.0, 100.0, 0.0, 100.0)
 
-    # Morning commuter: reports 7-9 AM on weekdays, POLICE only, Madrid center
-    morning_events = []
-    for day in range(21):  # 3 weeks
-        if day % 7 < 5:  # weekdays only
+    # User A: reports 7-9 AM on weekdays, POLICE only, at bbox minimum
+    # Many events to boost histogram signal
+    user_a_events = []
+    for day in range(28):
+        if day % 7 < 5:  # weekdays
             for hour in (7, 8, 9):
                 ts = _BASE_MS + day * _DAY_MS + hour * _HOUR_MS
-                morning_events.append(_make_event(40.42, -3.70, ts, "POLICE"))
+                user_a_events.append(_make_event(1.0, 1.0, ts, "POLICE"))
 
-    # Night owl: reports 22-02 on weekends, ROAD_CLOSED/CHIT_CHAT, Tokyo
-    night_events = []
-    for day in range(21):
-        if day % 7 >= 5:  # weekends only
+    # User B: reports 22-02 on weekends, CHIT_CHAT only, at bbox maximum
+    user_b_events = []
+    for day in range(28):
+        if day % 7 >= 5:  # weekends
             for hour in (22, 23, 0, 1, 2):
                 ts = _BASE_MS + day * _DAY_MS + hour * _HOUR_MS
-                rt = "ROAD_CLOSED" if hour % 2 == 0 else "CHIT_CHAT"
-                night_events.append(_make_event(35.68, 139.69, ts, rt))
+                user_b_events.append(_make_event(99.0, 99.0, ts, "CHIT_CHAT"))
 
-    max_count = max(len(morning_events), len(night_events))
-    vec_morning = build_behavioral_vector(morning_events, global_bbox, max_event_count=max_count)
-    vec_night = build_behavioral_vector(night_events, global_bbox, max_event_count=max_count)
+    max_count = max(len(user_a_events), len(user_b_events))
+    vec_a = build_behavioral_vector(user_a_events, bbox, max_event_count=max_count)
+    vec_b = build_behavioral_vector(user_b_events, bbox, max_event_count=max_count)
 
-    sim = cosine_similarity(vec_morning, vec_night)
-    assert sim < 0.65, f"Expected similarity < 0.65 for different patterns, got {sim}"
+    sim = cosine_similarity(vec_a, vec_b)
+    assert sim < 0.5, f"Expected similarity < 0.5 for different patterns, got {sim}"
 
 
 def test_vector_similarity_same_pattern():
