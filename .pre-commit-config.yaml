@@ -6,17 +6,6 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
-  - repo: https://github.com/astral-sh/ty
-    rev: 0.1.0
-    hooks:
-      - id: ty
-
-  - repo: https://github.com/astral-sh/prek
-    rev: 1.0.0
-    hooks:
-      - id: prek
-        args: [--all-files]
-
   - repo: local
     hooks:
       - id: pytest
@@ -25,3 +14,30 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+  # ── Secret detection (added by install-pre-commit-hooks.sh) ──────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        exclude: '(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|go\.sum|poetry\.lock|Cargo\.lock)$'
+
+  # ── Block .env files (added by install-pre-commit-hooks.sh) ──────────
+  - repo: local
+    hooks:
+      - id: block-env-files
+        name: Block .env files from being committed
+        entry: bash -c 'exec ~/git/scripts/block-env-files.sh "$@"' --
+        language: system
+        pass_filenames: true
+        stages: [pre-commit]
+
+  # ── Block Claude-generated output (added by install-pre-commit-hooks.sh)
+  - repo: local
+    hooks:
+      - id: block-claude-generated
+        name: Block Claude-generated output directories
+        entry: bash -c 'exec ~/git/scripts/block-claude-generated.sh "$@"' --
+        language: system
+        pass_filenames: true
+        stages: [pre-commit]
