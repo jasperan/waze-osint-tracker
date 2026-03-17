@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "waze-logs"
-version = "1.2.2"
+version = "1.3.0"
 description = "Worldwide Waze traffic event collection and analysis tool - demonstrates location privacy risks in crowdsourced traffic applications"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -80,7 +80,7 @@ python-version = "3.10"
 testpaths = ["tests"]
 
 [tool.setuptools]
-py-modules = ["cli", "collector", "collector_europe", "collector_worldwide", "database", "database_oracle", "analysis", "intel_vectors", "intel_routines", "intel_cooccurrence", "intel_prediction", "intel_dossier", "intel_combined", "intel_pipeline", "waze_client", "grid"]
+py-modules = ["cli", "collector", "collector_europe", "collector_worldwide", "database", "database_oracle", "database_factory", "analysis", "intel_vectors", "intel_routines", "intel_cooccurrence", "intel_prediction", "intel_dossier", "intel_combined", "intel_pipeline", "waze_client", "grid", "trip_reconstruction", "privacy_score"]
 include-package-data = true
 
 [tool.setuptools.packages.find]

@@ -247,6 +247,55 @@ CREATE OR REPLACE PROPERTY GRAPH waze.waze_social_graph
     );
 
 -- =============================================================================
+-- PRIVACY_SCORES — Per-user privacy risk assessment
+-- =============================================================================
+CREATE TABLE waze.privacy_scores (
+    score_id            NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username            VARCHAR2(200) NOT NULL,
+    overall_score       NUMBER(5,2) NOT NULL,
+    risk_level          VARCHAR2(20) NOT NULL,
+    home_exposure       NUMBER(5,2),
+    work_exposure       NUMBER(5,2),
+    schedule_score      NUMBER(5,2),
+    route_score         NUMBER(5,2),
+    identity_score      NUMBER(5,2),
+    trackability_score  NUMBER(5,2),
+    details_json        CLOB,
+    computed_at         TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CONSTRAINT ps_username_uq UNIQUE (username)
+);
+
+CREATE INDEX idx_ps_score ON waze.privacy_scores (overall_score);
+CREATE INDEX idx_ps_risk ON waze.privacy_scores (risk_level);
+
+-- =============================================================================
+-- USER_TRIPS — Reconstructed driving trips from event sequences
+-- =============================================================================
+CREATE TABLE waze.user_trips (
+    trip_id             VARCHAR2(64) NOT NULL,
+    username            VARCHAR2(200) NOT NULL,
+    started_at          TIMESTAMP WITH TIME ZONE,
+    ended_at            TIMESTAMP WITH TIME ZONE,
+    start_lat           NUMBER(10,6),
+    start_lon           NUMBER(10,6),
+    end_lat             NUMBER(10,6),
+    end_lon             NUMBER(10,6),
+    distance_km         NUMBER(8,2),
+    duration_minutes    NUMBER(8,2),
+    avg_speed_kmh       NUMBER(6,2),
+    waypoint_count      NUMBER,
+    trip_type           VARCHAR2(50),
+    waypoints_json      CLOB,
+    route_polyline      CLOB,
+    computed_at         TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CONSTRAINT trips_id_uq UNIQUE (trip_id)
+);
+
+CREATE INDEX idx_trips_username ON waze.user_trips (username);
+CREATE INDEX idx_trips_started ON waze.user_trips (started_at);
+CREATE INDEX idx_trips_type ON waze.user_trips (trip_type);
+
+-- =============================================================================
 -- Summary
 -- =============================================================================
 -- Schema created:
@@ -259,4 +308,6 @@ CREATE OR REPLACE PROPERTY GRAPH waze.waze_social_graph
 --   waze.user_routines
 --   waze.identity_correlations
 --   waze.waze_social_graph   (SQL Property Graph)
+--   waze.privacy_scores      (per-user privacy risk assessment)
+--   waze.user_trips          (reconstructed driving trips)
 -- =============================================================================

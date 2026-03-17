@@ -784,6 +784,193 @@ def api_intel_convoys():
     return jsonify([dict(r) for r in results])
 
 
+# === Trip Reconstruction API endpoints ===
+
+
+@app.route("/api/trips/<username>")
+def api_trips(username):
+    """Get reconstructed trips for a user."""
+    since = request.args.get("since")  # e.g. "7d", "24h"
+    limit = request.args.get("limit", 50, type=int)
+    classify = request.args.get("classify", "true").lower() == "true"
+
+    db = get_db()
+    try:
+        cursor = db.execute(
+            "SELECT latitude, longitude, timestamp_ms, report_type "
+            "FROM events WHERE username = ? ORDER BY timestamp_ms",
+            (username,),
+        )
+        events = []
+        for row in cursor.fetchall():
+            if isinstance(row, dict):
+                events.append(row)
+            else:
+                events.append(
+                    {
+                        "latitude": row[0],
+                        "longitude": row[1],
+                        "timestamp_ms": row[2],
+                        "report_type": row[3],
+                    }
+                )
+
+        if since:
+            cutoff_ms = _parse_since_to_ms(since)
+            events = [e for e in events if e["timestamp_ms"] >= cutoff_ms]
+
+        if not events:
+            return jsonify({"error": "No events found", "trips": []}), 404
+
+        from trip_reconstruction import get_trip_summary, reconstruct_trips
+
+        routines = None
+        if classify:
+            try:
+                from intel_routines import infer_routines
+
+                routines = infer_routines(events)
+            except Exception:
+                pass
+
+        trips = reconstruct_trips(events, username, routines=routines)
+
+        return jsonify(
+            {
+                "username": username,
+                "trips": [t.to_dict() for t in trips[:limit]],
+                "summary": get_trip_summary(trips),
+            }
+        )
+    finally:
+        db.close()
+
+
+# === Privacy Score API endpoints ===
+
+
+@app.route("/api/privacy-score/<username>")
+def api_privacy_score(username):
+    """Get full privacy risk score breakdown for a user."""
+    db = get_db()
+    try:
+        cursor = db.execute(
+            "SELECT latitude, longitude, timestamp_ms, report_type "
+            "FROM events WHERE username = ? ORDER BY timestamp_ms",
+            (username,),
+        )
+        events = []
+        for row in cursor.fetchall():
+            if isinstance(row, dict):
+                events.append(row)
+            else:
+                events.append(
+                    {
+                        "latitude": row[0],
+                        "longitude": row[1],
+                        "timestamp_ms": row[2],
+                        "report_type": row[3],
+                    }
+                )
+
+        if not events:
+            return jsonify({"error": "User not found"}), 404
+
+        from privacy_score import compute_privacy_score
+
+        routines = None
+        try:
+            from intel_routines import infer_routines
+
+            routines = infer_routines(events)
+        except Exception:
+            pass
+
+        correlations = None
+        try:
+            config = _load_web_config()
+            if config.get("database_type") == "oracle":
+                corr_cursor = db.execute(
+                    "SELECT user_a, user_b, combined_score, correlation_type "
+                    "FROM identity_correlations "
+                    "WHERE user_a = ? OR user_b = ? "
+                    "ORDER BY combined_score DESC FETCH FIRST 10 ROWS ONLY",
+                    (username, username),
+                )
+                correlations = []
+                for r in corr_cursor.fetchall():
+                    if isinstance(r, dict):
+                        correlations.append(r)
+                    else:
+                        correlations.append(
+                            {
+                                "user_a": r[0],
+                                "user_b": r[1],
+                                "combined_score": r[2],
+                                "correlation_type": r[3],
+                            }
+                        )
+        except Exception:
+            pass
+
+        result = compute_privacy_score(
+            events=events,
+            routines=routines,
+            correlations=correlations,
+        )
+        result["username"] = username
+        result["event_count"] = len(events)
+        return jsonify(result)
+    finally:
+        db.close()
+
+
+@app.route("/api/privacy-score/leaderboard")
+def api_privacy_leaderboard():
+    """Get top users by privacy risk score."""
+    limit = request.args.get("limit", 20, type=int)
+
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+
+    # Try to read from cached scores in Oracle
+    if config.get("database_type") == "oracle":
+        try:
+            from database_oracle import Database as OracleDatabase
+
+            db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+            cursor = db.execute(
+                "SELECT username, overall_score, risk_level, "
+                "home_exposure, work_exposure, schedule_score, "
+                "route_score, identity_score, trackability_score "
+                "FROM privacy_scores ORDER BY overall_score DESC "
+                "FETCH FIRST ? ROWS ONLY",
+                (limit,),
+            )
+            results = [dict(r) for r in cursor.fetchall()]
+            db.close()
+            if results:
+                return jsonify(results)
+        except Exception:
+            pass
+
+    return jsonify({"error": "Run 'waze privacy-score --batch' first to compute scores"}), 404
+
+
+def _parse_since_to_ms(since_str):
+    """Parse '7d' or '24h' into a cutoff timestamp in ms."""
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    value = int(since_str[:-1])
+    unit = since_str[-1].lower()
+    if unit == "d":
+        return now_ms - value * 86_400_000
+    elif unit == "h":
+        return now_ms - value * 3_600_000
+    return now_ms
+
+
 if __name__ == "__main__":
     try:
         _cfg = _load_web_config()

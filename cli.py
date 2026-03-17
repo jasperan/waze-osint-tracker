@@ -2060,5 +2060,625 @@ def build(min_events):
     db.close()
 
 
+# === Database Management Commands ===
+
+
+@cli.group()
+def db():
+    """Oracle 26ai database management commands."""
+    pass
+
+
+@db.command("up")
+@click.option("--wait/--no-wait", default=True, help="Wait for Oracle to be healthy")
+@click.option("--timeout", default=180, help="Max seconds to wait for Oracle")
+def db_up(wait, timeout):
+    """Start Oracle 26ai container via docker compose."""
+    import subprocess
+
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    compose_file = os.path.join(project_root, "docker-compose.yml")
+
+    if not os.path.exists(compose_file):
+        console.print("[error]docker-compose.yml not found[/error]")
+        return
+
+    console.print("[info]Starting Oracle 26ai Free container...[/info]")
+    result = subprocess.run(
+        ["docker", "compose", "-f", compose_file, "up", "-d"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        console.print(f"[error]Failed to start container: {result.stderr}[/error]")
+        return
+
+    console.print("[success]Container started[/success]")
+
+    if wait:
+        console.print(f"[info]Waiting for Oracle to be healthy (timeout: {timeout}s)...[/info]")
+        import time as _time
+
+        start = _time.time()
+        while _time.time() - start < timeout:
+            check = subprocess.run(
+                ["docker", "compose", "-f", compose_file, "ps", "--format", "json"],
+                capture_output=True,
+                text=True,
+            )
+            if "healthy" in check.stdout.lower():
+                console.print("[success]Oracle 26ai is healthy and ready[/success]")
+                return
+            _time.sleep(5)
+            elapsed = int(_time.time() - start)
+            console.print(f"[info]  ... {elapsed}s elapsed[/info]")
+
+        console.print("[error]Timeout waiting for Oracle to become healthy[/error]")
+
+
+@db.command("status")
+def db_status():
+    """Check Oracle database connectivity and schema state."""
+    from database_factory import check_oracle_connection
+
+    ok, msg = check_oracle_connection()
+    if ok:
+        console.print(f"[success]Oracle: {msg}[/success]")
+    else:
+        console.print(f"[error]Oracle: {msg}[/error]")
+
+
+@db.command("init")
+@click.option("--wait/--no-wait", default=True, help="Wait for Oracle to be ready first")
+def db_init(wait):
+    """Initialize Oracle schema (creates tables if they don't exist)."""
+    import subprocess
+
+    config = load_config()
+    if config.get("database_type") == "sqlite":
+        console.print("[info]Using SQLite — no initialization needed[/info]")
+        return
+
+    if wait:
+        from database_factory import check_oracle_connection
+
+        console.print("[info]Checking Oracle connectivity...[/info]")
+        for attempt in range(30):
+            ok, msg = check_oracle_connection(config)
+            if ok:
+                console.print(f"[success]Connected: {msg}[/success]")
+                break
+            if attempt < 29:
+                console.print(f"[info]  Attempt {attempt + 1}/30: {msg}[/info]")
+                time.sleep(5)
+        else:
+            console.print("[error]Cannot connect to Oracle after 30 attempts[/error]")
+            return
+
+    # Run init SQL via sqlplus in the container
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    init_sql = os.path.join(project_root, "scripts", "init_oracle.sql")
+
+    if not os.path.exists(init_sql):
+        console.print("[error]scripts/init_oracle.sql not found[/error]")
+        return
+
+    console.print("[info]Running schema initialization...[/info]")
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "-i",
+            "waze-oracle-26ai",
+            "sqlplus",
+            "-s",
+            "sys/WazeIntel2026@//localhost:1521/FREEPDB1 as sysdba",
+        ],
+        input=open(init_sql).read(),
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        console.print(f"[error]Schema init failed: {result.stderr}[/error]")
+    else:
+        console.print("[success]Schema initialized successfully[/success]")
+        if "ORA-" in result.stdout:
+            # Some errors are expected (table already exists)
+            console.print("[info]Note: Some 'already exists' warnings are normal[/info]")
+
+
+@db.command("shell")
+def db_shell():
+    """Open an interactive sqlplus session in the Oracle container."""
+    import subprocess
+
+    console.print("[info]Opening sqlplus session (Ctrl+D to exit)...[/info]")
+    subprocess.run(
+        [
+            "docker",
+            "exec",
+            "-it",
+            "waze-oracle-26ai",
+            "sqlplus",
+            "waze/WazeIntel2026@//localhost:1521/FREEPDB1",
+        ],
+    )
+
+
+# === Trip Reconstruction Commands ===
+
+
+@cli.command("trips")
+@click.argument("username", required=False)
+@click.option("--since", default=None, help="Time filter (e.g. 7d, 24h)")
+@click.option("--classify/--no-classify", default=True, help="Classify trips against routines")
+@click.option("--build", is_flag=True, help="Reconstruct trips for all users")
+@click.option("--min-events", default=10, help="Min events per user (with --build)")
+@click.option("--json-out", "json_output", is_flag=True, help="Output as JSON")
+def trips_cmd(username, since, classify, build, min_events, json_output):
+    """Reconstruct driving trips from event sequences."""
+    from trip_reconstruction import get_trip_summary, reconstruct_trips
+
+    config = load_config()
+    db = get_db()
+
+    if build:
+        _build_all_trips(db, config, min_events, classify)
+        db.close()
+        return
+
+    if not username:
+        console.print("[error]Provide a username or use --build for all users[/error]")
+        db.close()
+        return
+
+    # Fetch events for user
+    cursor = db.execute(
+        "SELECT latitude, longitude, timestamp_ms, report_type "
+        "FROM events WHERE username = ? ORDER BY timestamp_ms",
+        (username,),
+    )
+    events = [
+        dict(row)
+        if isinstance(row, dict)
+        else {
+            "latitude": row[0],
+            "longitude": row[1],
+            "timestamp_ms": row[2],
+            "report_type": row[3],
+        }
+        for row in cursor.fetchall()
+    ]
+
+    if since:
+        cutoff_ms = _parse_since_to_ms(since)
+        events = [e for e in events if e["timestamp_ms"] >= cutoff_ms]
+
+    if not events:
+        console.print(f"[dim]No events found for {username}[/dim]")
+        db.close()
+        return
+
+    # Get routines for classification
+    routines = None
+    if classify:
+        try:
+            from intel_routines import infer_routines
+
+            routines = infer_routines(events)
+        except Exception:
+            pass
+
+    trips = reconstruct_trips(events, username, routines=routines)
+
+    if json_output:
+        click.echo(json.dumps([t.to_dict() for t in trips], indent=2, default=str))
+        db.close()
+        return
+
+    if not trips:
+        console.print(f"[dim]No reconstructable trips for {username}[/dim]")
+        db.close()
+        return
+
+    # Display trips table
+    table = Table(title=f"Trips for {username}", box=box.ROUNDED)
+    table.add_column("ID", style="dim", max_width=10)
+    table.add_column("Start", style="cyan")
+    table.add_column("End", style="cyan")
+    table.add_column("Distance", justify="right")
+    table.add_column("Duration", justify="right")
+    table.add_column("Speed", justify="right")
+    table.add_column("Points", justify="right")
+    table.add_column("Type", style="bold")
+
+    type_colors = {
+        "MORNING_COMMUTE": "bold blue",
+        "EVENING_COMMUTE": "bold yellow",
+        "ROUND_TRIP": "bold green",
+        "HOME_DEPARTURE": "bold cyan",
+        "WORK_DEPARTURE": "bold magenta",
+        "OTHER": "dim",
+    }
+
+    for t in trips:
+        start_short = t.started_at[:16].replace("T", " ") if t.started_at else "?"
+        end_short = t.ended_at[:16].replace("T", " ") if t.ended_at else "?"
+        color = type_colors.get(t.trip_type, "dim")
+        table.add_row(
+            t.trip_id[:8],
+            start_short,
+            end_short,
+            f"{t.distance_km:.1f} km",
+            f"{t.duration_minutes:.0f} min",
+            f"{t.avg_speed_kmh:.0f} km/h",
+            str(t.waypoint_count),
+            Text(t.trip_type, style=color),
+        )
+
+    console.print(table)
+
+    # Summary
+    summary = get_trip_summary(trips)
+    console.print(
+        f"\n[info]Total: {summary['total_trips']} trips, "
+        f"{summary['total_distance_km']:.1f} km, "
+        f"{summary['total_duration_hours']:.1f} hours[/info]"
+    )
+
+    db.close()
+
+
+def _build_all_trips(db, config, min_events, classify):
+    """Reconstruct trips for all qualifying users."""
+    from trip_reconstruction import reconstruct_trips
+
+    cursor = db.execute(
+        "SELECT username, COUNT(*) as cnt FROM events "
+        "GROUP BY username HAVING COUNT(*) >= ? ORDER BY cnt DESC",
+        (min_events,),
+    )
+    users = cursor.fetchall()
+
+    console.print(
+        f"[info]Building trips for {len(users)} users (min {min_events} events)...[/info]"
+    )
+    total_trips = 0
+
+    for i, row in enumerate(users):
+        uname = row["username"] if isinstance(row, dict) else row[0]
+        event_cursor = db.execute(
+            "SELECT latitude, longitude, timestamp_ms, report_type "
+            "FROM events WHERE username = ? ORDER BY timestamp_ms",
+            (uname,),
+        )
+        events = [
+            dict(r)
+            if isinstance(r, dict)
+            else {"latitude": r[0], "longitude": r[1], "timestamp_ms": r[2], "report_type": r[3]}
+            for r in event_cursor.fetchall()
+        ]
+
+        routines = None
+        if classify:
+            try:
+                from intel_routines import infer_routines
+
+                routines = infer_routines(events)
+            except Exception:
+                pass
+
+        trips = reconstruct_trips(events, uname, routines=routines)
+        total_trips += len(trips)
+
+        # Store trips in Oracle if available
+        if config.get("database_type") == "oracle" and trips:
+            _store_trips(db, trips)
+
+        if (i + 1) % 50 == 0:
+            console.print(
+                f"[info]  Processed {i + 1}/{len(users)} users ({total_trips} trips)...[/info]"
+            )
+
+    if config.get("database_type") == "oracle":
+        db.commit()
+    console.print(f"[success]Built {total_trips} trips for {len(users)} users[/success]")
+
+
+def _store_trips(db, trips):
+    """Store trips in Oracle user_trips table."""
+    for t in trips:
+        try:
+            db.execute(
+                """
+                MERGE INTO user_trips ut
+                USING (SELECT ? AS trip_id FROM DUAL) s
+                ON (ut.trip_id = s.trip_id)
+                WHEN NOT MATCHED THEN INSERT (
+                    trip_id, username, started_at, ended_at,
+                    start_lat, start_lon, end_lat, end_lon,
+                    distance_km, duration_minutes, avg_speed_kmh,
+                    waypoint_count, trip_type, waypoints_json
+                ) VALUES (
+                    ?, ?,
+                    TO_TIMESTAMP_TZ(?, 'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM'),
+                    TO_TIMESTAMP_TZ(?, 'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM'),
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    t.trip_id,
+                    t.trip_id,
+                    t.username,
+                    t.started_at,
+                    t.ended_at,
+                    t.start_lat,
+                    t.start_lon,
+                    t.end_lat,
+                    t.end_lon,
+                    t.distance_km,
+                    t.duration_minutes,
+                    t.avg_speed_kmh,
+                    t.waypoint_count,
+                    t.trip_type,
+                    json.dumps(t.waypoints),
+                ),
+            )
+        except Exception:
+            pass  # skip duplicates
+
+
+def _parse_since_to_ms(since_str):
+    """Parse '7d' or '24h' into a cutoff timestamp in ms."""
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    value = int(since_str[:-1])
+    unit = since_str[-1].lower()
+    if unit == "d":
+        return now_ms - value * 86_400_000
+    elif unit == "h":
+        return now_ms - value * 3_600_000
+    return now_ms
+
+
+# === Privacy Risk Score Command ===
+
+
+@cli.command("privacy-score")
+@click.argument("username", required=False)
+@click.option("--json-out", "json_output", is_flag=True, help="Output as JSON")
+@click.option("--batch", is_flag=True, help="Score all qualifying users")
+@click.option("--min-events", default=20, help="Min events per user (with --batch)")
+def privacy_score_cmd(username, json_output, batch, min_events):
+    """Compute privacy risk score for a Waze user."""
+    from privacy_score import compute_privacy_score, format_privacy_report
+
+    config = load_config()
+    db = get_db()
+
+    if batch:
+        _batch_privacy_scores(db, config, min_events)
+        db.close()
+        return
+
+    if not username:
+        console.print("[error]Provide a username or use --batch for all users[/error]")
+        db.close()
+        return
+
+    # Fetch events
+    cursor = db.execute(
+        "SELECT latitude, longitude, timestamp_ms, report_type "
+        "FROM events WHERE username = ? ORDER BY timestamp_ms",
+        (username,),
+    )
+    events = [
+        dict(row)
+        if isinstance(row, dict)
+        else {
+            "latitude": row[0],
+            "longitude": row[1],
+            "timestamp_ms": row[2],
+            "report_type": row[3],
+        }
+        for row in cursor.fetchall()
+    ]
+
+    if not events:
+        console.print(f"[error]No events found for {username}[/error]")
+        db.close()
+        return
+
+    console.print(f"[info]Analyzing {len(events)} events for {username}...[/info]")
+
+    # Infer routines
+    routines = None
+    try:
+        from intel_routines import infer_routines
+
+        routines = infer_routines(events)
+    except Exception:
+        pass
+
+    # Get correlations (Oracle only)
+    correlations = None
+    if config.get("database_type") == "oracle":
+        try:
+            corr_cursor = db.execute(
+                "SELECT user_a, user_b, combined_score, correlation_type "
+                "FROM identity_correlations "
+                "WHERE user_a = ? OR user_b = ? "
+                "ORDER BY combined_score DESC FETCH FIRST 10 ROWS ONLY",
+                (username, username),
+            )
+            correlations = [
+                dict(r)
+                if isinstance(r, dict)
+                else {
+                    "user_a": r[0],
+                    "user_b": r[1],
+                    "combined_score": r[2],
+                    "correlation_type": r[3],
+                }
+                for r in corr_cursor.fetchall()
+            ]
+        except Exception:
+            pass
+
+    result = compute_privacy_score(
+        events=events,
+        routines=routines,
+        correlations=correlations,
+    )
+
+    if json_output:
+        click.echo(json.dumps(result, indent=2, default=str))
+    else:
+        report = format_privacy_report(username, result)
+        level = result["risk_level"]
+        level_colors = {
+            "LOW": "green",
+            "MODERATE": "yellow",
+            "HIGH": "orange1",
+            "CRITICAL": "bold red",
+        }
+        border = level_colors.get(level, "white")
+        console.print(Panel(report, title=f"Privacy Assessment: {username}", border_style=border))
+
+    # Store in Oracle
+    if config.get("database_type") == "oracle":
+        try:
+            db.execute(
+                """
+                MERGE INTO privacy_scores ps
+                USING (SELECT ? AS username FROM DUAL) s
+                ON (ps.username = s.username)
+                WHEN MATCHED THEN UPDATE SET
+                    overall_score = ?, risk_level = ?,
+                    home_exposure = ?, work_exposure = ?,
+                    schedule_score = ?, route_score = ?,
+                    identity_score = ?, trackability_score = ?,
+                    details_json = ?, computed_at = SYSTIMESTAMP
+                WHEN NOT MATCHED THEN INSERT (
+                    username, overall_score, risk_level,
+                    home_exposure, work_exposure, schedule_score,
+                    route_score, identity_score, trackability_score,
+                    details_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    username,
+                    result["overall_score"],
+                    result["risk_level"],
+                    result["sub_scores"]["home_exposure"],
+                    result["sub_scores"]["work_exposure"],
+                    result["sub_scores"]["schedule_predictability"],
+                    result["sub_scores"]["route_reconstructability"],
+                    result["sub_scores"]["identity_linkage"],
+                    result["sub_scores"]["trackability"],
+                    json.dumps(result["details"], default=str),
+                    username,
+                    result["overall_score"],
+                    result["risk_level"],
+                    result["sub_scores"]["home_exposure"],
+                    result["sub_scores"]["work_exposure"],
+                    result["sub_scores"]["schedule_predictability"],
+                    result["sub_scores"]["route_reconstructability"],
+                    result["sub_scores"]["identity_linkage"],
+                    result["sub_scores"]["trackability"],
+                    json.dumps(result["details"], default=str),
+                ),
+            )
+            db.commit()
+        except Exception:
+            pass
+
+    db.close()
+
+
+def _batch_privacy_scores(db, config, min_events):
+    """Compute privacy scores for all qualifying users."""
+    from privacy_score import compute_privacy_score
+
+    cursor = db.execute(
+        "SELECT username, COUNT(*) as cnt FROM events "
+        "GROUP BY username HAVING COUNT(*) >= ? ORDER BY cnt DESC",
+        (min_events,),
+    )
+    users = cursor.fetchall()
+
+    console.print(f"[info]Scoring {len(users)} users (min {min_events} events)...[/info]")
+    results = []
+
+    for i, row in enumerate(users):
+        uname = row["username"] if isinstance(row, dict) else row[0]
+
+        event_cursor = db.execute(
+            "SELECT latitude, longitude, timestamp_ms, report_type "
+            "FROM events WHERE username = ? ORDER BY timestamp_ms",
+            (uname,),
+        )
+        events = [
+            dict(r)
+            if isinstance(r, dict)
+            else {"latitude": r[0], "longitude": r[1], "timestamp_ms": r[2], "report_type": r[3]}
+            for r in event_cursor.fetchall()
+        ]
+
+        routines = None
+        try:
+            from intel_routines import infer_routines
+
+            routines = infer_routines(events)
+        except Exception:
+            pass
+
+        result = compute_privacy_score(events=events, routines=routines)
+        results.append((uname, result))
+
+        if (i + 1) % 50 == 0:
+            console.print(f"[info]  Scored {i + 1}/{len(users)} users...[/info]")
+
+    # Display results sorted by score
+    results.sort(key=lambda x: x[1]["overall_score"], reverse=True)
+
+    table = Table(title="Privacy Risk Scores", box=box.ROUNDED)
+    table.add_column("Username", style="cyan")
+    table.add_column("Score", justify="right", style="bold")
+    table.add_column("Level")
+    table.add_column("Home", justify="right")
+    table.add_column("Work", justify="right")
+    table.add_column("Schedule", justify="right")
+    table.add_column("Routes", justify="right")
+    table.add_column("Identity", justify="right")
+    table.add_column("Track", justify="right")
+
+    level_colors = {
+        "LOW": "green",
+        "MODERATE": "yellow",
+        "HIGH": "orange1",
+        "CRITICAL": "bold red",
+    }
+
+    for uname, r in results[:50]:
+        s = r["sub_scores"]
+        lc = level_colors.get(r["risk_level"], "white")
+        table.add_row(
+            uname[:20],
+            f"{r['overall_score']:.0f}",
+            Text(r["risk_level"], style=lc),
+            f"{s['home_exposure']:.0f}",
+            f"{s['work_exposure']:.0f}",
+            f"{s['schedule_predictability']:.0f}",
+            f"{s['route_reconstructability']:.0f}",
+            f"{s['identity_linkage']:.0f}",
+            f"{s['trackability']:.0f}",
+        )
+
+    console.print(table)
+    console.print(f"\n[info]Scored {len(results)} users total[/info]")
+
+
 if __name__ == "__main__":
     cli()

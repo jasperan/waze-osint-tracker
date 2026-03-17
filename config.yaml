@@ -1,6 +1,14 @@
-polling_interval_seconds: 120
-waze_server_url: "http://localhost:8080"
+# Database: Oracle 26ai Free (default) or SQLite (fallback)
+database_type: oracle
+oracle_dsn: "waze/WazeIntel2026@localhost:1521/FREEPDB1"
+oracle_schema: waze
+sqlite_fallback: true
+
+# Legacy SQLite path (used when database_type: sqlite or as fallback)
 database_path: "./data/waze_madrid.db"
+
+polling_interval_seconds: 120
+waze_server_url: "https://www.waze.com"
 
 # Grid cells covering all of Madrid metropolitan area
 # Each cell is ~0.04 x 0.04 degrees (~4km x 4km)
