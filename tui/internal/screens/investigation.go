@@ -201,7 +201,7 @@ func (m InvestigationModel) Update(msg tea.Msg) (InvestigationModel, tea.Cmd) {
 			}
 
 		case "esc":
-			return m, func() tea.Msg { return NavigateMsg{Screen: 2} }
+			return m, func() tea.Msg { return NavigateMsg{Screen: ScreenDashboard} }
 		}
 	}
 

@@ -138,7 +138,7 @@ func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 			if m.sseCancel != nil {
 				m.sseCancel()
 			}
-			return m, func() tea.Msg { return NavigateMsg{Screen: 3} }
+			return m, func() tea.Msg { return NavigateMsg{Screen: ScreenInvestigation} }
 		case "f":
 			m.filterIdx = (m.filterIdx + 1) % len(feedFilters)
 			m.feed.Filter = feedFilters[m.filterIdx]
@@ -146,7 +146,7 @@ func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 			if m.sseCancel != nil {
 				m.sseCancel()
 			}
-			return m, func() tea.Msg { return NavigateMsg{Screen: 1} }
+			return m, func() tea.Msg { return NavigateMsg{Screen: ScreenRegions} }
 		}
 	}
 

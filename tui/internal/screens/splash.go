@@ -80,7 +80,7 @@ func (m SplashModel) Update(msg tea.Msg) (SplashModel, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			if m.connected {
-				return m, func() tea.Msg { return NavigateMsg{Screen: 1} }
+				return m, func() tea.Msg { return NavigateMsg{Screen: ScreenRegions} }
 			}
 		case "r":
 			m.retries = 0

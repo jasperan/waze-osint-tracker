@@ -118,7 +118,7 @@ func (m RegionsModel) Update(msg tea.Msg) (RegionsModel, tea.Cmd) {
 				}
 			}
 		case "h":
-			return m, func() tea.Msg { return NavigateMsg{Screen: 4} }
+			return m, func() tea.Msg { return NavigateMsg{Screen: ScreenHistory} }
 		}
 	}
 

@@ -62,7 +62,7 @@ func (m HistoryModel) Update(msg tea.Msg) (HistoryModel, tea.Cmd) {
 				m.cursor++
 			}
 		case "esc":
-			return m, func() tea.Msg { return NavigateMsg{Screen: 1} }
+			return m, func() tea.Msg { return NavigateMsg{Screen: ScreenRegions} }
 		}
 	}
 
