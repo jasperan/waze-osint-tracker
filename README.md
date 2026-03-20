@@ -93,6 +93,8 @@ uv add --dev <package>
 
 A full-screen terminal dashboard built with Go and [Bubble Tea](https://github.com/charmbracelet/bubbletea). Same Waze gold palette as the web UI, with semantic event-type colors.
 
+![TUI Splash Screen](img/tui/tui-splash.png)
+
 **Requires:** Go 1.24+
 
 ```bash
@@ -108,13 +110,21 @@ cd tui && make build
 
 ### Screens
 
-| Key | Screen | What it does |
-|-----|--------|--------------|
-| `1` | **Splash** | Animated banner, API connection check, auto-retry |
-| `2` | **Region Picker** | Select regions to scan, launch collection |
-| `3` | **Live Dashboard** | Real-time event feed, per-region stats, throughput sparkline |
-| `4` | **Investigation** | 3-panel user research: trips, privacy score, intel dossier, location grid, co-occurrence network |
-| `5` | **History** | Browse recent activity |
+**Region Picker** — select continents to scan, then launch collection with `Enter`.
+
+![Region Picker](img/tui/tui-regions.png)
+
+**Live Dashboard** — real-time event feed, per-region status panels, throughput sparkline. Toggle between focus and grid layouts with `Tab`.
+
+![Live Dashboard](img/tui/tui-dashboard.png)
+
+**Investigation Workbench** — 3-panel layout for user research. Left panel: sortable user list. Right: profile summary. Bottom: switchable views (trips, privacy score, intel dossier, location grid, co-occurrence network).
+
+![Investigation](img/tui/tui-investigation.png)
+
+**History** — browse recent events across all regions.
+
+![History](img/tui/tui-history.png)
 
 ### Key Bindings
 
