@@ -57,11 +57,11 @@ func New(apiURL, version string) App {
 		proc:        process.NewManager(),
 		version:     version,
 		screen:      ScreenSplash,
-		splash:      screens.NewSplash(),
-		regions:     screens.NewRegions(),
-		dashboard:   screens.NewDashboard(),
-		investigate: screens.NewInvestigation(),
-		history:     screens.NewHistory(),
+		splash:      screens.NewSplash(api.NewClient(apiURL)),
+		regions:     screens.NewRegions(api.NewClient(apiURL)),
+		dashboard:   screens.NewDashboard(api.NewClient(apiURL)),
+		investigate: screens.NewInvestigation(api.NewClient(apiURL)),
+		history:     screens.NewHistory(api.NewClient(apiURL)),
 	}
 }
 
