@@ -223,7 +223,7 @@ func (a App) renderHelpOverlay(w, h int) string {
 
 	content := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.ColorPrimary).
+		BorderForeground(lipgloss.Color(theme.Primary)).
 		Padding(1, 3).
 		Render(strings.Join(lines, "\n"))
 
