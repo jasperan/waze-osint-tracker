@@ -75,16 +75,6 @@ func (c *Client) GetRecent(limit int) ([]EventRow, error) {
 	return rows, nil
 }
 
-// UserSummary mirrors a row in /api/users.
-type UserSummary struct {
-	Username   string  `json:"username"`
-	EventCount int     `json:"event_count"`
-	LastSeen   string  `json:"last_seen"`
-	TopType    string  `json:"top_type"`
-	AvgLat     float64 `json:"avg_lat"`
-	AvgLon     float64 `json:"avg_lon"`
-}
-
 // GetUsers fetches the user summary list.
 func (c *Client) GetUsers(limit int) ([]UserSummary, error) {
 	var users []UserSummary
@@ -92,14 +82,6 @@ func (c *Client) GetUsers(limit int) ([]UserSummary, error) {
 		return nil, err
 	}
 	return users, nil
-}
-
-// PrivacyScore mirrors /api/privacy-score/<username>.
-type PrivacyScore struct {
-	Username   string             `json:"username"`
-	TotalScore float64            `json:"total_score"`
-	SubScores  map[string]float64 `json:"sub_scores"`
-	Risk       string             `json:"risk"`
 }
 
 // GetPrivacyScore fetches a user's privacy score.
