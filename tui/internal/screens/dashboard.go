@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -54,6 +55,11 @@ type DashboardModel struct {
 	regions    []components.RegionData
 	paused     bool
 	filterIdx  int // index into feedFilters
+
+	// SSE stream state.
+	sseCh     <-chan api.SSEMessage
+	sseCtx    context.Context
+	sseCancel context.CancelFunc
 }
 
 // NewDashboard creates a DashboardModel with all 5 regions initialised.
@@ -71,9 +77,21 @@ func NewDashboard(client *api.Client) DashboardModel {
 	}
 }
 
-// Init returns the initial command: kick off the stats polling loop.
+// Init returns the initial command: kick off the stats polling loop and SSE stream.
 func (m DashboardModel) Init() tea.Cmd {
-	return pollStats()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.sseCtx = ctx
+	m.sseCancel = cancel
+
+	ch, err := m.client.StreamEvents(ctx)
+	if err != nil {
+		// SSE unavailable; still poll stats.
+		cancel()
+		return pollStats()
+	}
+	m.sseCh = ch
+
+	return tea.Batch(pollStats(), m.waitForSSE())
 }
 
 // Update handles all messages for the dashboard.
@@ -101,6 +119,10 @@ func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 				}
 			}
 		}
+		// Keep listening: re-schedule the wait command.
+		if m.sseCh != nil {
+			return m, m.waitForSSE()
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -113,11 +135,17 @@ func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 		case "p":
 			m.paused = !m.paused
 		case "i":
+			if m.sseCancel != nil {
+				m.sseCancel()
+			}
 			return m, func() tea.Msg { return NavigateMsg{Screen: 3} }
 		case "f":
 			m.filterIdx = (m.filterIdx + 1) % len(feedFilters)
 			m.feed.Filter = feedFilters[m.filterIdx]
 		case "esc":
+			if m.sseCancel != nil {
+				m.sseCancel()
+			}
 			return m, func() tea.Msg { return NavigateMsg{Screen: 1} }
 		}
 	}
@@ -282,6 +310,21 @@ func (m DashboardModel) renderStatusBar(width int) string {
 }
 
 // ── commands ──────────────────────────────────────────────────────────────────
+
+// waitForSSE returns a tea.Cmd that blocks until one SSE message arrives on the
+// channel and delivers it as an sseEventMsg. The Update handler re-schedules it
+// after each message, creating a persistent listen loop.
+func (m DashboardModel) waitForSSE() tea.Cmd {
+	ch := m.sseCh
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			// Channel closed (context cancelled or server gone).
+			return nil
+		}
+		return sseEventMsg{msg: msg}
+	}
+}
 
 // pollStats schedules a statsTickMsg after 5 seconds.
 func pollStats() tea.Cmd {

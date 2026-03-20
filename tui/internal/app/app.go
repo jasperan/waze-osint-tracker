@@ -82,9 +82,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// Global keys first.
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			a.proc.StopAll()
 			return a, tea.Quit
+		case "q":
+			// Only quit from splash; elsewhere navigate back to splash.
+			if a.screen == ScreenSplash {
+				a.proc.StopAll()
+				return a, tea.Quit
+			}
+			return a, func() tea.Msg { return SwitchScreenMsg{Screen: ScreenSplash} }
 		case "?", "f1":
 			a.showHelp = !a.showHelp
 			return a, nil
@@ -102,9 +109,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Delegate to active screen.
 		return a.delegateKey(msg)
 
+	case screens.NavigateMsg:
+		cmd := a.switchTo(Screen(msg.Screen))
+		return a, cmd
+
+	case screens.LaunchCollectionMsg:
+		// Start Flask web server and the collector, then jump to dashboard.
+		_ = a.proc.StartFlask("5000")
+		_ = a.proc.StartCollector(msg.Regions)
+		cmd := a.switchTo(ScreenDashboard)
+		return a, cmd
+
 	case SwitchScreenMsg:
-		a.switchScreen(msg.Screen)
-		return a, nil
+		cmd := a.switchTo(msg.Screen)
+		return a, cmd
 	}
 
 	// Delegate all other msgs to the active screen.
@@ -134,10 +152,29 @@ func (a App) delegateMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
-// switchScreen transitions to a new screen.
-func (a *App) switchScreen(s Screen) {
+// switchTo transitions to a new screen, re-creating the model so it gets fresh
+// data, and returns the screen's Init cmd.
+func (a *App) switchTo(s Screen) tea.Cmd {
 	a.screen = s
 	a.showHelp = false
+	switch s {
+	case ScreenSplash:
+		a.splash = screens.NewSplash(a.client)
+		return a.splash.Init()
+	case ScreenRegions:
+		a.regions = screens.NewRegions(a.client)
+		return a.regions.Init()
+	case ScreenDashboard:
+		a.dashboard = screens.NewDashboard(a.client)
+		return a.dashboard.Init()
+	case ScreenInvestigation:
+		a.investigate = screens.NewInvestigation(a.client)
+		return a.investigate.Init()
+	case ScreenHistory:
+		a.history = screens.NewHistory(a.client)
+		return a.history.Init()
+	}
+	return nil
 }
 
 // View renders the current screen.
