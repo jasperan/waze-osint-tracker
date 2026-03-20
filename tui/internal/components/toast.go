@@ -19,6 +19,9 @@ func NewToast(level, message string) *Toast {
 // RenderToast renders a toast with colored border based on level.
 // success = theme.Success border, error = theme.Error border, default = theme.Primary border
 func RenderToast(t *Toast, width int) string {
+	if t == nil {
+		return ""
+	}
 	var borderColor lipgloss.Color
 	switch t.Level {
 	case "success":
@@ -39,5 +42,8 @@ func RenderToast(t *Toast, width int) string {
 
 // OverlayToast appends toast below content using lipgloss.JoinVertical.
 func OverlayToast(content string, t *Toast, width int) string {
+	if t == nil {
+		return content
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, content, RenderToast(t, width))
 }

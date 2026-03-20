@@ -43,6 +43,12 @@ type statsResultMsg struct {
 	stats *api.Stats
 }
 
+// sseConnectedMsg carries the SSE channel and cancel func back through Update.
+type sseConnectedMsg struct {
+	ch     <-chan api.SSEMessage
+	cancel context.CancelFunc
+}
+
 // ── model ────────────────────────────────────────────────────────────────────
 
 // DashboardModel is the real-time collection monitor screen.
@@ -77,21 +83,23 @@ func NewDashboard(client *api.Client) DashboardModel {
 	}
 }
 
-// Init returns the initial command: kick off the stats polling loop and SSE stream.
+// Init returns the initial command: kick off the stats polling loop and SSE connection.
 func (m DashboardModel) Init() tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
-	m.sseCtx = ctx
-	m.sseCancel = cancel
+	return tea.Batch(pollStats(), m.connectSSE())
+}
 
-	ch, err := m.client.StreamEvents(ctx)
-	if err != nil {
-		// SSE unavailable; still poll stats.
-		cancel()
-		return pollStats()
+// connectSSE starts the SSE stream in a goroutine and sends the channel back
+// through the Update loop (avoiding the value-receiver Init trap).
+func (m DashboardModel) connectSSE() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+		ch, err := m.client.StreamEvents(ctx)
+		if err != nil {
+			cancel()
+			return nil
+		}
+		return sseConnectedMsg{ch: ch, cancel: cancel}
 	}
-	m.sseCh = ch
-
-	return tea.Batch(pollStats(), m.waitForSSE())
 }
 
 // Update handles all messages for the dashboard.
@@ -103,6 +111,11 @@ func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 
 	case statsResultMsg:
 		m.stats = msg.stats
+
+	case sseConnectedMsg:
+		m.sseCh = msg.ch
+		m.sseCancel = msg.cancel
+		return m, m.waitForSSE()
 
 	case sseEventMsg:
 		if !m.paused && msg.msg.Event != nil {

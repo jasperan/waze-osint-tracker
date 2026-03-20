@@ -9,14 +9,6 @@ import (
 	"github.com/jasperan/waze-madrid-logger/tui/internal/theme"
 )
 
-// min returns the smaller of two ints.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // RenderCoOccurrenceView renders convoy pairs and identity correlations.
 func RenderCoOccurrenceView(convoys []api.Convoy, correlations []api.Correlation, width int) string {
 	dimStyle := lipgloss.NewStyle().Foreground(theme.DimColor)

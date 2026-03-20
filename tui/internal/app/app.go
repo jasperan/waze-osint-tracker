@@ -52,16 +52,17 @@ type App struct {
 
 // New creates the root application model.
 func New(apiURL, version string) App {
+	c := api.NewClient(apiURL)
 	return App{
-		client:      api.NewClient(apiURL),
+		client:      c,
 		proc:        process.NewManager(),
 		version:     version,
 		screen:      ScreenSplash,
-		splash:      screens.NewSplash(api.NewClient(apiURL)),
-		regions:     screens.NewRegions(api.NewClient(apiURL)),
-		dashboard:   screens.NewDashboard(api.NewClient(apiURL)),
-		investigate: screens.NewInvestigation(api.NewClient(apiURL)),
-		history:     screens.NewHistory(api.NewClient(apiURL)),
+		splash:      screens.NewSplash(c),
+		regions:     screens.NewRegions(c),
+		dashboard:   screens.NewDashboard(c),
+		investigate: screens.NewInvestigation(c),
+		history:     screens.NewHistory(c),
 	}
 }
 
