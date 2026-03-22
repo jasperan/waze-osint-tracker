@@ -2,7 +2,6 @@
 # collector_worldwide.py
 """Worldwide autonomous Waze data collector - all continents."""
 
-import hashlib
 import json
 import logging
 import os
@@ -23,8 +22,16 @@ status_lock = threading.Lock()
 checkpoint_lock = threading.Lock()
 
 
-def write_status(region: str, cell_name: str, country: str, cell_idx: int, total_cells: int,
-                 alerts_count: int, new_count: int, event_types: List[str] = None):
+def write_status(
+    region: str,
+    cell_name: str,
+    country: str,
+    cell_idx: int,
+    total_cells: int,
+    alerts_count: int,
+    new_count: int,
+    event_types: List[str] = None,
+):
     """Write current collector status to file for UI consumption (thread-safe)."""
     try:
         status = {
@@ -37,7 +44,7 @@ def write_status(region: str, cell_name: str, country: str, cell_idx: int, total
             "alerts_found": alerts_count,
             "new_events": new_count,
             "event_types": event_types or [],
-            "status": "scanning"
+            "status": "scanning",
         }
         with status_lock:
             with open(STATUS_FILE, "w") as f:
@@ -63,7 +70,7 @@ def save_checkpoint(cycle: int, scanned: Dict[str, List[str]]):
         checkpoint = {
             "cycle": cycle,
             "scanned": scanned,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         with checkpoint_lock:
             with open(CHECKPOINT_FILE, "w") as f:
@@ -84,21 +91,14 @@ def clear_checkpoint():
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('logs/worldwide_collector.log')
-    ]
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(), logging.FileHandler("logs/worldwide_collector.log")],
 )
 logger = logging.getLogger("worldwide")
 
 
-def generate_event_hash(username: str, latitude: float, longitude: float,
-                        timestamp_ms: int, report_type: str) -> str:
-    timestamp_minute = timestamp_ms // 60000
-    data = f"{username}|{round(latitude, 4)}|{round(longitude, 4)}|{timestamp_minute}|{report_type}"
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
+from utils import generate_event_hash  # noqa: E402
 
 
 def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
@@ -109,9 +109,7 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
     report_type = alert.get("type", "UNKNOWN")
     subtype = alert.get("subtype")
 
-    timestamp_utc = datetime.fromtimestamp(
-        timestamp_ms / 1000, tz=timezone.utc
-    ).isoformat()
+    timestamp_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
 
     return {
         "event_hash": generate_event_hash(username, latitude, longitude, timestamp_ms, report_type),
@@ -124,7 +122,7 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
         "subtype": subtype,
         "raw_json": json.dumps(alert),
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "grid_cell": grid_cell
+        "grid_cell": grid_cell,
     }
 
 
@@ -153,8 +151,13 @@ class RegionScanner:
     def get_cell_counts(self) -> Dict[int, int]:
         return {p: len(cells) for p, cells in self.cells_by_priority.items()}
 
-    def scan(self, priority: int, running_flag, already_scanned: set = None,
-             on_cell_scanned: callable = None) -> Dict[str, Any]:
+    def scan(
+        self,
+        priority: int,
+        running_flag,
+        already_scanned: set = None,
+        on_cell_scanned: callable = None,
+    ) -> Dict[str, Any]:
         """Scan cells of given priority, skipping already-scanned cells.
 
         Args:
@@ -169,12 +172,14 @@ class RegionScanner:
         already_scanned = already_scanned or set()
 
         # Filter out already-scanned cells
-        remaining_cells = [(idx, cell) for idx, cell in enumerate(cells, 1)
-                          if cell["name"] not in already_scanned]
+        remaining_cells = [
+            (idx, cell) for idx, cell in enumerate(cells, 1) if cell["name"] not in already_scanned
+        ]
 
         if len(remaining_cells) < len(cells):
             skipped = len(cells) - len(remaining_cells)
-            self.logger.info(f"Resuming: skipping {skipped} already-scanned cells, {len(remaining_cells)} remaining")
+            remaining = len(remaining_cells)
+            self.logger.info(f"Resuming: skipping {skipped} already-scanned, {remaining} remaining")
 
         for idx, cell in remaining_cells:
             if not running_flag():
@@ -189,7 +194,7 @@ class RegionScanner:
                     lat_top=cell["lat_top"],
                     lat_bottom=cell["lat_bottom"],
                     lon_left=cell["lon_left"],
-                    lon_right=cell["lon_right"]
+                    lon_right=cell["lon_right"],
                 )
 
                 new_count = 0
@@ -213,11 +218,18 @@ class RegionScanner:
                     type_summary = ""
                     if new_types:
                         from collections import Counter
+
                         counts = Counter(new_types)
-                        type_summary = " | " + ", ".join(f"{t}:{c}" for t, c in counts.most_common(3))
+                        type_summary = " | " + ", ".join(
+                            f"{t}:{c}" for t, c in counts.most_common(3)
+                        )
 
                     status = f"+{new_count}" if new_count > 0 else "0"
-                    self.logger.info(f"[{idx:3}/{total_cells}] {cell_name:25} ({country}) -> {len(alerts):3} alerts, {status} new{type_summary}")
+                    n_alerts = len(alerts)
+                    self.logger.info(
+                        f"[{idx:3}/{total_cells}] {cell_name:25} ({country})"
+                        f" -> {n_alerts:3} alerts, {status} new{type_summary}"
+                    )
 
                     # Write status for real-time UI updates
                     write_status(
@@ -228,7 +240,7 @@ class RegionScanner:
                         total_cells=total_cells,
                         alerts_count=len(alerts),
                         new_count=new_count,
-                        event_types=new_types
+                        event_types=new_types,
                     )
 
             except Exception as e:
@@ -368,15 +380,23 @@ class WorldwideCollector:
             for key, cells in scanned_cells.items():
                 logger.info(f"  {key}: {len(cells)} cells already scanned")
 
-        def scan_region(region_name: str, priority: int, today: str, already_scanned: set,
-                        checkpoint_key: str) -> Dict[str, Any]:
+        def scan_region(
+            region_name: str, priority: int, today: str, already_scanned: set, checkpoint_key: str
+        ) -> Dict[str, Any]:
             """Scan a single region (runs in thread)."""
             scanner = self.scanners[region_name]
             db = self.databases[region_name]
 
             p_count = scanner.get_cell_counts().get(priority, 0)
             if p_count == 0:
-                return {"region": region_name, "events": 0, "errors": 0, "requests": 0, "cells": 0, "scanned_cells": []}
+                return {
+                    "region": region_name,
+                    "events": 0,
+                    "errors": 0,
+                    "requests": 0,
+                    "cells": 0,
+                    "scanned_cells": [],
+                }
 
             def on_cell_scanned(cell_name):
                 """Callback to save checkpoint after each cell (thread-safe)."""
@@ -394,7 +414,7 @@ class WorldwideCollector:
                 events=stats["events"],
                 requests=stats["requests"],
                 errors=stats["errors"],
-                cells=stats["cells"]
+                cells=stats["cells"],
             )
 
             return {"region": region_name, **stats}
@@ -404,9 +424,9 @@ class WorldwideCollector:
                 cycle += 1
                 today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-                logger.info(f"\n{'='*50}")
+                logger.info(f"\n{'=' * 50}")
                 logger.info(f"CYCLE {cycle} (PARALLEL MODE)")
-                logger.info(f"{'='*50}")
+                logger.info(f"{'=' * 50}")
 
                 # Parallel P1 scan - all regions at once
                 logger.info(f"Starting parallel P1 scan across {len(region_names)} regions...")
@@ -419,7 +439,9 @@ class WorldwideCollector:
                     for region in region_names:
                         key = f"{region}_p1"
                         already_scanned = set(scanned_cells.get(key, []))
-                        futures[executor.submit(scan_region, region, 1, today, already_scanned, key)] = (region, key)
+                        futures[
+                            executor.submit(scan_region, region, 1, today, already_scanned, key)
+                        ] = (region, key)
 
                     for future in as_completed(futures):
                         region, key = futures[future]
@@ -430,13 +452,17 @@ class WorldwideCollector:
 
                             # Checkpoint is saved per-cell by callback, no need to save here
 
-                            if result["events"] > 0 or result["errors"] > 0:
-                                logger.info(f"  [{region.upper()}] +{result['events']} events, {result['errors']} errors")
+                            evts = result["events"]
+                            errs = result["errors"]
+                            if evts > 0 or errs > 0:
+                                logger.info(f"  [{region.upper()}] +{evts} events, {errs} errors")
                         except Exception as e:
                             logger.error(f"  [{region.upper()}] Thread error: {e}")
                             cycle_complete = False
 
-                logger.info(f"P1 cycle complete: +{total_events} total events, {total_errors} errors")
+                logger.info(
+                    f"P1 cycle complete: +{total_events} total events, {total_errors} errors"
+                )
 
                 # Clear P1 checkpoint data after successful cycle
                 if cycle_complete:
@@ -454,7 +480,9 @@ class WorldwideCollector:
                         for region in region_names:
                             key = f"{region}_p3"
                             already_scanned = set(scanned_cells.get(key, []))
-                            futures[executor.submit(scan_region, region, 3, today, already_scanned, key)] = (region, key)
+                            futures[
+                                executor.submit(scan_region, region, 3, today, already_scanned, key)
+                            ] = (region, key)
 
                         for future in as_completed(futures):
                             region, key = futures[future]
@@ -481,9 +509,12 @@ class WorldwideCollector:
                     logger.info("\n--- DATABASE SUMMARY ---")
                     for region_name, db in self.databases.items():
                         result = db.execute(
-                            "SELECT COUNT(*) as events, COUNT(DISTINCT username) as users FROM events"
+                            "SELECT COUNT(*) as events,"
+                            " COUNT(DISTINCT username) as users FROM events"
                         ).fetchone()
-                        logger.info(f"  {region_name.upper():10}: {result[0]:,} events, {result[1]:,} users")
+                        logger.info(
+                            f"  {region_name.upper():10}: {result[0]:,} events, {result[1]:,} users"
+                        )
 
                 # Wait between cycles (shorter since parallel is faster)
                 if self.running:
@@ -501,8 +532,11 @@ class WorldwideCollector:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Worldwide Waze Data Collector")
-    parser.add_argument("--generate-configs", action="store_true", help="Generate all configs and exit")
+    parser.add_argument(
+        "--generate-configs", action="store_true", help="Generate all configs and exit"
+    )
     parser.add_argument("--status", action="store_true", help="Show collector status")
     args = parser.parse_args()
 

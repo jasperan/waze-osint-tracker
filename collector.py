@@ -1,5 +1,4 @@
 # collector.py
-import hashlib
 import json
 import logging
 import os
@@ -12,23 +11,8 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from utils import generate_event_hash  # noqa: E402 — re-exported for backwards compat
 
-def generate_event_hash(
-    username: str,
-    latitude: float,
-    longitude: float,
-    timestamp_ms: int,
-    report_type: str
-) -> str:
-    """Generate unique hash for event deduplication."""
-    # Round timestamp to minute for dedup (same event reported twice in same minute)
-    timestamp_minute = timestamp_ms // 60000
-    # Round coordinates to 4 decimal places (~11m precision)
-    lat_rounded = round(latitude, 4)
-    lon_rounded = round(longitude, 4)
-
-    data = f"{username}|{lat_rounded}|{lon_rounded}|{timestamp_minute}|{report_type}"
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
     """Process raw Waze alert into event record."""
@@ -39,16 +23,14 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
     report_type = alert.get("type", "UNKNOWN")
     subtype = alert.get("subtype")
 
-    timestamp_utc = datetime.fromtimestamp(
-        timestamp_ms / 1000, tz=timezone.utc
-    ).isoformat()
+    timestamp_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
 
     event_hash = generate_event_hash(
         username=username,
         latitude=latitude,
         longitude=longitude,
         timestamp_ms=timestamp_ms,
-        report_type=report_type
+        report_type=report_type,
     )
 
     return {
@@ -62,7 +44,7 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
         "subtype": subtype,
         "raw_json": json.dumps(alert),
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "grid_cell": grid_cell
+        "grid_cell": grid_cell,
     }
 
 
@@ -85,11 +67,13 @@ class Collector:
         self.logger.handlers.clear()
         # Console handler
         console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter('%(message)s'))
+        console_handler.setFormatter(logging.Formatter("%(message)s"))
         self.logger.addHandler(console_handler)
         # File handler
-        file_handler = logging.FileHandler('logs/collector.log')
-        file_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        file_handler = logging.FileHandler("logs/collector.log")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+        )
         self.logger.addHandler(file_handler)
 
     def log(self, msg):
@@ -125,16 +109,21 @@ class Collector:
     def _start_web_server(self):
         """Start Flask web server in a background thread."""
         import threading
+
         def run_flask():
             import logging as flask_logging
-            flask_log = flask_logging.getLogger('werkzeug')
+
+            flask_log = flask_logging.getLogger("werkzeug")
             flask_log.setLevel(flask_logging.WARNING)
 
             project_root = os.path.dirname(os.path.abspath(__file__))
             if project_root not in sys.path:
                 sys.path.insert(0, project_root)
             from web.app import app
-            app.run(host="0.0.0.0", port=self.web_port, debug=False, threaded=True, use_reloader=False)
+
+            app.run(
+                host="0.0.0.0", port=self.web_port, debug=False, threaded=True, use_reloader=False
+            )
 
         web_thread = threading.Thread(target=run_flask, daemon=True)
         web_thread.start()
@@ -194,10 +183,7 @@ class Collector:
                                 new_count += 1
                                 cycle_events += 1
                                 # Track the user
-                                db.upsert_tracked_user(
-                                    event["username"],
-                                    event["timestamp_utc"]
-                                )
+                                db.upsert_tracked_user(event["username"], event["timestamp_utc"])
                                 # Count by type
                                 t = event["report_type"]
                                 type_counts[t] = type_counts.get(t, 0) + 1
@@ -208,8 +194,10 @@ class Collector:
                         if rate_status["current_delay"] > 2:
                             delay_info = f" [delay: {rate_status['current_delay']:.1f}s]"
 
-                        self.log(f"[{datetime.now().strftime('%H:%M:%S')}] {cell.name}: "
-                              f"{len(alerts)} alerts, {new_count} new{delay_info}")
+                        self.log(
+                            f"[{datetime.now().strftime('%H:%M:%S')}] {cell.name}: "
+                            f"{len(alerts)} alerts, {new_count} new{delay_info}"
+                        )
 
                     except Exception as e:
                         cycle_errors += 1
@@ -218,7 +206,7 @@ class Collector:
                 # Update daily stats after each full cycle
                 unique_users = db.execute(
                     "SELECT COUNT(DISTINCT username) FROM events WHERE DATE(timestamp_utc) = ?",
-                    (today,)
+                    (today,),
                 ).fetchone()[0]
 
                 db.update_daily_stats(
@@ -228,12 +216,14 @@ class Collector:
                     requests=cycle_requests,
                     errors=cycle_errors,
                     cells=len(cells),
-                    by_type=type_counts if type_counts else None
+                    by_type=type_counts if type_counts else None,
                 )
 
                 if cycle_events > 0:
-                    self.log(f"[{datetime.now().strftime('%H:%M:%S')}] Cycle complete: "
-                          f"+{cycle_events} events, {cycle_errors} errors")
+                    self.log(
+                        f"[{datetime.now().strftime('%H:%M:%S')}] Cycle complete: "
+                        f"+{cycle_events} events, {cycle_errors} errors"
+                    )
 
                 if self.running:
                     time.sleep(interval)

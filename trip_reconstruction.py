@@ -5,10 +5,11 @@ classifies trips against known routine locations (home/work/commute).
 """
 
 import hashlib
-import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
+from utils import haversine_km as _haversine_km
 
 # Maximum gap between consecutive events to be considered same trip (seconds)
 MAX_TRIP_GAP_S = 7200  # 2 hours
@@ -19,20 +20,6 @@ MAX_SPEED_KMH = 200.0
 
 # Minimum waypoints to form a valid trip
 MIN_WAYPOINTS = 2
-
-# Earth radius in km
-_EARTH_RADIUS_KM = 6371.0
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance between two points in kilometers."""
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    )
-    return 2 * _EARTH_RADIUS_KM * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 @dataclass

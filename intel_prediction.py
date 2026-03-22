@@ -1,23 +1,14 @@
 """Predictive presence module — predict where a user will be at a given day/hour."""
 
-import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-# Earth radius in meters for haversine
+from utils import haversine_m as _haversine_m
+
 _EARTH_RADIUS_M = 6_371_000
-
-
-def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Return the great-circle distance in **meters** between two points."""
-    rlat1, rlon1, rlat2, rlon2 = map(math.radians, (lat1, lon1, lat2, lon2))
-    dlat = rlat2 - rlat1
-    dlon = rlon2 - rlon1
-    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
-    return 2 * _EARTH_RADIUS_M * math.asin(math.sqrt(a))
 
 
 def _to_radians_matrix(coords: np.ndarray) -> np.ndarray:

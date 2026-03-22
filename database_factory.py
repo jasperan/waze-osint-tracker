@@ -9,22 +9,11 @@ import logging
 import os
 import time
 
-import yaml
+from utils import load_config  # noqa: F401 — re-exported for backwards compat
 
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-
-
-def load_config():
-    """Load config, preferring config_oracle.yaml over config.yaml."""
-    for config_file in ("config_oracle.yaml", "config.yaml"):
-        full_path = os.path.join(_PROJECT_ROOT, config_file)
-        if os.path.exists(full_path):
-            with open(full_path) as f:
-                return yaml.safe_load(f)
-    with open(os.path.join(_PROJECT_ROOT, "config.yaml")) as f:
-        return yaml.safe_load(f)
 
 
 def get_database(config=None, region=None, retry=True):

@@ -80,7 +80,7 @@ python-version = "3.10"
 testpaths = ["tests"]
 
 [tool.setuptools]
-py-modules = ["cli", "collector", "collector_europe", "collector_worldwide", "database", "database_oracle", "database_factory", "analysis", "intel_vectors", "intel_routines", "intel_cooccurrence", "intel_prediction", "intel_dossier", "intel_combined", "intel_pipeline", "waze_client", "grid", "trip_reconstruction", "privacy_score"]
+py-modules = ["cli", "collector", "collector_europe", "collector_worldwide", "database", "database_oracle", "database_factory", "analysis", "intel_vectors", "intel_routines", "intel_cooccurrence", "intel_prediction", "intel_dossier", "intel_combined", "intel_pipeline", "waze_client", "grid", "trip_reconstruction", "privacy_score", "utils"]
 include-package-data = true
 
 [tool.setuptools.packages.find]

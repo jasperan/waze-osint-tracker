@@ -157,7 +157,8 @@ def parse_dossier_response(raw: str) -> str:
     Returns:
         Cleaned response text with <think>...</think> blocks removed.
     """
-    cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+    # Greedy match handles nested <think> tags correctly
+    cleaned = re.sub(r"<think>.*</think>", "", raw, flags=re.DOTALL)
     return cleaned.strip()
 
 

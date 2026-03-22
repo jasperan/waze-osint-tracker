@@ -16,7 +16,7 @@ def test_load_config_reads_yaml(tmp_path, monkeypatch):
     """load_config() should read a config file and return a dict."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("database_type: sqlite\ndatabase_path: ./data/test.db\n")
-    monkeypatch.setattr("database_factory._PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("utils._PROJECT_ROOT", str(tmp_path))
     result = load_config()
     assert result["database_type"] == "sqlite"
 
@@ -25,7 +25,7 @@ def test_load_config_prefers_oracle(tmp_path, monkeypatch):
     """config_oracle.yaml should take precedence over config.yaml."""
     (tmp_path / "config.yaml").write_text("database_type: sqlite\n")
     (tmp_path / "config_oracle.yaml").write_text("database_type: oracle\noracle_dsn: test\n")
-    monkeypatch.setattr("database_factory._PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("utils._PROJECT_ROOT", str(tmp_path))
     result = load_config()
     assert result["database_type"] == "oracle"
 
@@ -86,7 +86,7 @@ def test_get_all_databases_sqlite(tmp_path, monkeypatch):
     db = Database(str(data_dir / "waze_europe.db"))
     db.close()
 
-    monkeypatch.setattr("database_factory._PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("utils._PROJECT_ROOT", str(tmp_path))
     config = {"database_type": "sqlite", "database_path": str(data_dir / "waze_madrid.db")}
     dbs = get_all_databases(config)
     regions = [r for r, _ in dbs]

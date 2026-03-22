@@ -7,7 +7,7 @@ import queue
 import sys
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import yaml
 from flask import Flask, Response, jsonify, render_template, request
@@ -25,6 +25,8 @@ app = Flask(__name__)
 # Global event queue for SSE broadcasting
 event_queues = []
 event_queues_lock = threading.Lock()
+
+MAX_SSE_CLIENTS = 50
 
 # Stats cache (expensive query - cache for 60 seconds)
 _stats_cache = {"data": None, "expires": 0}
@@ -224,8 +226,11 @@ def api_events():
                 params.append(username)
 
             if since:
-                hours = int(since)
-                cutoff = datetime.utcnow() - timedelta(hours=hours)
+                try:
+                    hours = int(since)
+                except (ValueError, TypeError):
+                    return jsonify({"error": "Invalid 'since' parameter, must be integer"}), 400
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
                 query += " AND timestamp_utc >= ?"
                 params.append(cutoff.isoformat())
             elif date_from:
@@ -310,8 +315,11 @@ def api_heatmap():
                 params.append(username)
 
             if since:
-                hours = int(since)
-                cutoff = datetime.utcnow() - timedelta(hours=hours)
+                try:
+                    hours = int(since)
+                except (ValueError, TypeError):
+                    return jsonify({"error": "Invalid 'since' parameter, must be integer"}), 400
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
                 query += " AND timestamp_utc >= ?"
                 params.append(cutoff.isoformat())
             elif date_from:
@@ -509,6 +517,10 @@ def api_stream():
     def generate():
         q = queue.Queue()
         with event_queues_lock:
+            if len(event_queues) >= MAX_SSE_CLIENTS:
+                err = json.dumps({"type": "error", "message": "Too many connections"})
+                yield f"data: {err}\n\n"
+                return
             event_queues.append(q)
 
         try:
@@ -666,9 +678,20 @@ def status_monitor_thread():
         time.sleep(2)  # Check every 2 seconds
 
 
-# Start status monitor thread
-monitor_thread = threading.Thread(target=status_monitor_thread, daemon=True)
-monitor_thread.start()
+_monitor_started = False
+
+
+def _ensure_monitor_started():
+    global _monitor_started
+    if not _monitor_started:
+        _monitor_started = True
+        monitor_thread = threading.Thread(target=status_monitor_thread, daemon=True)
+        monitor_thread.start()
+
+
+@app.before_request
+def _start_monitor():
+    _ensure_monitor_started()
 
 
 # === Intelligence API endpoints ===
@@ -961,8 +984,11 @@ def api_privacy_leaderboard():
 
 def _parse_since_to_ms(since_str):
     """Parse '7d' or '24h' into a cutoff timestamp in ms."""
-    now_ms = int(datetime.utcnow().timestamp() * 1000)
-    value = int(since_str[:-1])
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    try:
+        value = int(since_str[:-1])
+    except (ValueError, IndexError):
+        return now_ms
     unit = since_str[-1].lower()
     if unit == "d":
         return now_ms - value * 86_400_000

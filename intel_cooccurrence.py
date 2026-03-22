@@ -3,20 +3,10 @@
 place and time, suggesting they may be travelling together or following
 similar routines."""
 
-import math
 from collections import defaultdict
 from typing import Dict, List
 
-_EARTH_RADIUS_M = 6_371_000
-
-
-def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Return the great-circle distance in metres between two WGS-84 points."""
-    lat1, lon1, lat2, lon2 = (math.radians(v) for v in (lat1, lon1, lat2, lon2))
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-    return 2 * _EARTH_RADIUS_M * math.asin(math.sqrt(a))
+from utils import haversine_m as _haversine_m
 
 
 def find_cooccurrences(

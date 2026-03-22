@@ -7,25 +7,13 @@ Uses time-stratified DBSCAN clustering to infer routine locations:
 - Events along the home-work corridor -> COMMUTE
 """
 
-import math
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate the great-circle distance between two points in kilometers."""
-    earth_radius_km = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return earth_radius_km * c
+from utils import haversine_km as _haversine_km
 
 
 def _cluster_locations(

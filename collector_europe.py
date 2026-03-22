@@ -1,7 +1,6 @@
 # collector_europe.py
 """Autonomous Europe-wide Waze data collector with priority-based scanning."""
 
-import hashlib
 import json
 import logging
 import os
@@ -13,28 +12,15 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from utils import generate_event_hash
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
-
-
-def generate_event_hash(
-    username: str,
-    latitude: float,
-    longitude: float,
-    timestamp_ms: int,
-    report_type: str
-) -> str:
-    """Generate unique hash for event deduplication."""
-    timestamp_minute = timestamp_ms // 60000
-    lat_rounded = round(latitude, 4)
-    lon_rounded = round(longitude, 4)
-    data = f"{username}|{lat_rounded}|{lon_rounded}|{timestamp_minute}|{report_type}"
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 
 def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
@@ -46,16 +32,14 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
     report_type = alert.get("type", "UNKNOWN")
     subtype = alert.get("subtype")
 
-    timestamp_utc = datetime.fromtimestamp(
-        timestamp_ms / 1000, tz=timezone.utc
-    ).isoformat()
+    timestamp_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
 
     event_hash = generate_event_hash(
         username=username,
         latitude=latitude,
         longitude=longitude,
         timestamp_ms=timestamp_ms,
-        report_type=report_type
+        report_type=report_type,
     )
 
     return {
@@ -69,7 +53,7 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
         "subtype": subtype,
         "raw_json": json.dumps(alert),
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "grid_cell": grid_cell
+        "grid_cell": grid_cell,
     }
 
 
@@ -86,13 +70,14 @@ class EuropeCollector:
             "total_errors": 0,
             "total_events": 0,
             "last_full_scan": None,
-            "current_cycle": 0
+            "current_cycle": 0,
         }
 
     def _load_config(self) -> Dict[str, Any]:
         if not os.path.exists(self.config_path):
             logger.info("Config not found, generating Europe grid...")
             from europe_grid import save_europe_config
+
             save_europe_config(self.config_path)
 
         with open(self.config_path) as f:
@@ -146,7 +131,7 @@ class EuropeCollector:
                     lat_top=cell["lat_top"],
                     lat_bottom=cell["lat_bottom"],
                     lon_left=cell["lon_left"],
-                    lon_right=cell["lon_right"]
+                    lon_right=cell["lon_right"],
                 )
 
                 new_count = 0
@@ -154,10 +139,7 @@ class EuropeCollector:
                     event = process_alert(alert, cell["name"])
                     if db.insert_event(event):
                         new_count += 1
-                        db.upsert_tracked_user(
-                            event["username"],
-                            event["timestamp_utc"]
-                        )
+                        db.upsert_tracked_user(event["username"], event["timestamp_utc"])
 
                 stats["events"] += new_count
                 self.stats["total_events"] += new_count
@@ -165,8 +147,14 @@ class EuropeCollector:
                 # Log progress periodically
                 rate_status = client.get_rate_limit_status()
                 if new_count > 0 or rate_status["current_delay"] > 2:
-                    delay_info = f" [delay:{rate_status['current_delay']:.1f}s]" if rate_status["current_delay"] > 2 else ""
-                    logger.info(f"{cell['name']}: {len(alerts)} alerts, +{new_count} new{delay_info}")
+                    delay_info = (
+                        f" [delay:{rate_status['current_delay']:.1f}s]"
+                        if rate_status["current_delay"] > 2
+                        else ""
+                    )
+                    logger.info(
+                        f"{cell['name']}: {len(alerts)} alerts, +{new_count} new{delay_info}"
+                    )
 
             except Exception as e:
                 stats["errors"] += 1
@@ -190,7 +178,6 @@ class EuropeCollector:
 
         # Load cells by priority
         cells_by_priority = self._load_cells_by_priority()
-        priorities = sorted(cells_by_priority.keys())
 
         total_cells = sum(len(c) for c in cells_by_priority.values())
         priority_1_count = len(cells_by_priority.get(1, []))
@@ -228,7 +215,9 @@ class EuropeCollector:
 
                 # Always scan high-priority cells (cities)
                 if 1 in cells_by_priority:
-                    logger.info(f"Scanning {len(cells_by_priority[1])} priority-1 cells (cities)...")
+                    logger.info(
+                        f"Scanning {len(cells_by_priority[1])} priority-1 cells (cities)..."
+                    )
                     stats = self._scan_cells(cells_by_priority[1], db, client)
                     for k in cycle_stats:
                         cycle_stats[k] += stats[k]
@@ -242,7 +231,9 @@ class EuropeCollector:
 
                 # Scan low-priority cells (coverage) every 5th cycle
                 if 3 in cells_by_priority and cycle % 5 == 0:
-                    logger.info(f"Scanning {len(cells_by_priority[3])} priority-3 cells (coverage)...")
+                    logger.info(
+                        f"Scanning {len(cells_by_priority[3])} priority-3 cells (coverage)..."
+                    )
                     stats = self._scan_cells(cells_by_priority[3], db, client)
                     for k in cycle_stats:
                         cycle_stats[k] += stats[k]
@@ -251,7 +242,7 @@ class EuropeCollector:
                 # Update daily stats
                 unique_users = db.execute(
                     "SELECT COUNT(DISTINCT username) FROM events WHERE DATE(timestamp_utc) = ?",
-                    (today,)
+                    (today,),
                 ).fetchone()[0]
 
                 db.update_daily_stats(
@@ -260,7 +251,7 @@ class EuropeCollector:
                     users=unique_users,
                     requests=cycle_stats["requests"],
                     errors=cycle_stats["errors"],
-                    cells=cycle_stats["requests"]
+                    cells=cycle_stats["requests"],
                 )
 
                 # Log cycle summary
@@ -301,6 +292,7 @@ def main():
 
     if args.generate_config:
         from europe_grid import save_europe_config
+
         save_europe_config(args.config)
         return
 

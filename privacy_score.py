@@ -13,6 +13,8 @@ import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from utils import haversine_km as _haversine_km
+
 # Sub-score weights (must sum to 1.0)
 WEIGHTS = {
     "home_exposure": 0.25,
@@ -215,16 +217,7 @@ def compute_route_reconstructability(
         if gap_s <= 0 or gap_s > max_gap_s:
             continue
 
-        # Haversine distance
-        dlat = math.radians(e2["latitude"] - e1["latitude"])
-        dlon = math.radians(e2["longitude"] - e1["longitude"])
-        a = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(math.radians(e1["latitude"]))
-            * math.cos(math.radians(e2["latitude"]))
-            * math.sin(dlon / 2) ** 2
-        )
-        dist_km = 2 * 6371.0 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        dist_km = _haversine_km(e1["latitude"], e1["longitude"], e2["latitude"], e2["longitude"])
 
         speed_kmh = (dist_km / gap_s) * 3600 if gap_s > 0 else 0
         if 0 < speed_kmh <= max_speed_kmh:

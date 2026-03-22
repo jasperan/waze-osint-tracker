@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from numpy import ndarray
 
+from utils import haversine_km
+
 EVENT_TYPES = ["POLICE", "JAM", "HAZARD", "ACCIDENT", "ROAD_CLOSED", "CHIT_CHAT"]
 
 # Region bounding boxes: {name: (lat_min, lat_max, lon_min, lon_max)}
@@ -73,25 +75,8 @@ def build_dow_histogram(dows: List[int]) -> List[float]:
     return hist
 
 
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate the Haversine distance in kilometers between two points.
-
-    Args:
-        lat1, lon1: Latitude and longitude of point 1 in degrees.
-        lat2, lon2: Latitude and longitude of point 2 in degrees.
-
-    Returns:
-        Distance in kilometers.
-    """
-    earth_radius_km = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return earth_radius_km * c
+# haversine_km is imported from utils and re-exported for backwards compatibility.
+# intel_pipeline.py imports it as: from intel_vectors import haversine_km
 
 
 def cosine_similarity(a: ndarray, b: ndarray) -> float:

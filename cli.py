@@ -67,15 +67,7 @@ def cli():
     pass
 
 
-def load_config():
-    """Load config, preferring config_oracle.yaml over config.yaml."""
-    for config_file in ("config_oracle.yaml", "config.yaml"):
-        if os.path.exists(config_file):
-            with open(config_file) as f:
-                return yaml.safe_load(f)
-    # Final fallback: config.yaml must exist
-    with open("config.yaml") as f:
-        return yaml.safe_load(f)
+from utils import load_config  # noqa: E402
 
 
 def get_db(region=None):
@@ -210,15 +202,7 @@ def clear_checkpoint():
         pass
 
 
-def generate_event_hash(
-    username: str, latitude: float, longitude: float, timestamp_ms: int, report_type: str
-) -> str:
-    """Generate unique hash for event deduplication."""
-    import hashlib
-
-    timestamp_minute = timestamp_ms // 60000
-    data = f"{username}|{round(latitude, 4)}|{round(longitude, 4)}|{timestamp_minute}|{report_type}"
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
+from utils import generate_event_hash  # noqa: E402
 
 
 def process_alert(alert: dict, grid_cell: str) -> dict:

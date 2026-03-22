@@ -1,7 +1,6 @@
 # collector_global.py
 """Global Waze data collector managing multiple regions autonomously."""
 
-import hashlib
 import json
 import logging
 import os
@@ -13,22 +12,15 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from utils import generate_event_hash
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] [%(name)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("global")
-
-
-def generate_event_hash(username: str, latitude: float, longitude: float,
-                        timestamp_ms: int, report_type: str) -> str:
-    timestamp_minute = timestamp_ms // 60000
-    lat_rounded = round(latitude, 4)
-    lon_rounded = round(longitude, 4)
-    data = f"{username}|{lat_rounded}|{lon_rounded}|{timestamp_minute}|{report_type}"
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 
 def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
@@ -39,9 +31,7 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
     report_type = alert.get("type", "UNKNOWN")
     subtype = alert.get("subtype")
 
-    timestamp_utc = datetime.fromtimestamp(
-        timestamp_ms / 1000, tz=timezone.utc
-    ).isoformat()
+    timestamp_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
 
     event_hash = generate_event_hash(username, latitude, longitude, timestamp_ms, report_type)
 
@@ -56,7 +46,7 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
         "subtype": subtype,
         "raw_json": json.dumps(alert),
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "grid_cell": grid_cell
+        "grid_cell": grid_cell,
     }
 
 
@@ -87,7 +77,7 @@ class RegionCollector:
                     lat_top=cell["lat_top"],
                     lat_bottom=cell["lat_bottom"],
                     lon_left=cell["lon_left"],
-                    lon_right=cell["lon_right"]
+                    lon_right=cell["lon_right"],
                 )
 
                 new_count = 0
@@ -159,8 +149,9 @@ class GlobalCollector:
                 return None
         return None
 
-    def _scan_region(self, region_name: str, cells: List[Dict], priority: int,
-                     db, client, running_flag) -> Dict[str, int]:
+    def _scan_region(
+        self, region_name: str, cells: List[Dict], priority: int, db, client, running_flag
+    ) -> Dict[str, int]:
         """Scan cells for a region."""
         region_logger = logging.getLogger(region_name)
         stats = {"requests": 0, "errors": 0, "events": 0}
@@ -175,7 +166,7 @@ class GlobalCollector:
                     lat_top=cell["lat_top"],
                     lat_bottom=cell["lat_bottom"],
                     lon_left=cell["lon_left"],
-                    lon_right=cell["lon_right"]
+                    lon_right=cell["lon_right"],
                 )
 
                 new_count = 0
@@ -246,8 +237,12 @@ class GlobalCollector:
         logger.info("=" * 70)
         logger.info("GLOBAL WAZE COLLECTOR - Europe + Americas")
         logger.info("=" * 70)
-        logger.info(f"Europe cells: {total_europe} (P1: {len(europe_cells.get(1, []))}, P3: {len(europe_cells.get(3, []))})")
-        logger.info(f"Americas cells: {total_americas} (P1: {len(americas_cells.get(1, []))}, P3: {len(americas_cells.get(3, []))})")
+        eu_p1 = len(europe_cells.get(1, []))
+        eu_p3 = len(europe_cells.get(3, []))
+        am_p1 = len(americas_cells.get(1, []))
+        am_p3 = len(americas_cells.get(3, []))
+        logger.info(f"Europe cells: {total_europe} (P1: {eu_p1}, P3: {eu_p3})")
+        logger.info(f"Americas cells: {total_americas} (P1: {am_p1}, P3: {am_p3})")
         logger.info("Collection strategy:")
         logger.info("  - Priority 1 (cities): every cycle, alternating regions")
         logger.info("  - Priority 3 (coverage): every 5th cycle")
@@ -266,41 +261,73 @@ class GlobalCollector:
                     # Europe priority 1
                     if 1 in europe_cells:
                         logger.info(f"[EUROPE] Scanning {len(europe_cells[1])} city cells...")
-                        stats = self._scan_region("europe", europe_cells[1], 1,
-                                                  db_europe, client_europe, lambda: self.running)
+                        stats = self._scan_region(
+                            "europe",
+                            europe_cells[1],
+                            1,
+                            db_europe,
+                            client_europe,
+                            lambda: self.running,
+                        )
                         logger.info(f"[EUROPE] +{stats['events']} events, {stats['errors']} errors")
                 else:
                     # Americas priority 1
                     if 1 in americas_cells:
                         logger.info(f"[AMERICAS] Scanning {len(americas_cells[1])} city cells...")
-                        stats = self._scan_region("americas", americas_cells[1], 1,
-                                                  db_americas, client_americas, lambda: self.running)
-                        logger.info(f"[AMERICAS] +{stats['events']} events, {stats['errors']} errors")
+                        stats = self._scan_region(
+                            "americas",
+                            americas_cells[1],
+                            1,
+                            db_americas,
+                            client_americas,
+                            lambda: self.running,
+                        )
+                        logger.info(
+                            f"[AMERICAS] +{stats['events']} events, {stats['errors']} errors"
+                        )
 
                 # Full coverage scan every 5th cycle
                 if cycle % 5 == 0:
                     # Europe coverage
                     if 3 in europe_cells and self.running:
-                        logger.info(f"[EUROPE] Full coverage scan ({len(europe_cells[3])} cells)...")
-                        stats = self._scan_region("europe", europe_cells[3], 3,
-                                                  db_europe, client_europe, lambda: self.running)
+                        logger.info(
+                            f"[EUROPE] Full coverage scan ({len(europe_cells[3])} cells)..."
+                        )
+                        stats = self._scan_region(
+                            "europe",
+                            europe_cells[3],
+                            3,
+                            db_europe,
+                            client_europe,
+                            lambda: self.running,
+                        )
                         logger.info(f"[EUROPE] Coverage: +{stats['events']} events")
 
                 if cycle % 5 == 0:
                     # Americas coverage
                     if 3 in americas_cells and self.running:
-                        logger.info(f"[AMERICAS] Full coverage scan ({len(americas_cells[3])} cells)...")
-                        stats = self._scan_region("americas", americas_cells[3], 3,
-                                                  db_americas, client_americas, lambda: self.running)
+                        logger.info(
+                            f"[AMERICAS] Full coverage scan ({len(americas_cells[3])} cells)..."
+                        )
+                        stats = self._scan_region(
+                            "americas",
+                            americas_cells[3],
+                            3,
+                            db_americas,
+                            client_americas,
+                            lambda: self.running,
+                        )
                         logger.info(f"[AMERICAS] Coverage: +{stats['events']} events")
 
                 # Update daily stats
                 for db, name in [(db_europe, "europe"), (db_americas, "americas")]:
                     unique_users = db.execute(
                         "SELECT COUNT(DISTINCT username) FROM events WHERE DATE(timestamp_utc) = ?",
-                        (today,)
+                        (today,),
                     ).fetchone()[0]
-                    db.update_daily_stats(date=today, users=unique_users, requests=0, errors=0, cells=0)
+                    db.update_daily_stats(
+                        date=today, users=unique_users, requests=0, errors=0, cells=0
+                    )
 
                 if self.running:
                     interval = 30  # 30 seconds between cycles
@@ -316,6 +343,7 @@ class GlobalCollector:
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Global Waze Data Collector")
     parser.add_argument("--generate-configs", action="store_true", help="Generate configs and exit")
     args = parser.parse_args()
@@ -323,6 +351,7 @@ def main():
     if args.generate_configs:
         from americas_grid import save_americas_config
         from europe_grid import save_europe_config
+
         save_europe_config()
         save_americas_config()
         return
