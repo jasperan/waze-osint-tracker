@@ -18,7 +18,7 @@ from utils import haversine_km as _haversine_km
 
 def _cluster_locations(
     coords: np.ndarray, eps_km: float = 0.5, min_samples: int = 3
-) -> List[Tuple[np.ndarray, np.ndarray]]:
+) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Run DBSCAN on coordinate pairs and return clusters sorted by size (largest first).
 
     Args:
@@ -28,8 +28,10 @@ def _cluster_locations(
         min_samples: Minimum points to form a cluster.
 
     Returns:
-        List of (centroid, member_coords) tuples, largest cluster first.
-        centroid is shape (2,), member_coords is shape (M, 2).
+        List of (centroid, member_coords, labels_array) tuples, largest cluster first.
+        centroid is shape (2,), member_coords is shape (M, 2), labels_array is the
+        full DBSCAN labels array (shared across all clusters from the same run) with
+        the cluster's own label stored as an attribute on the tuple.
     """
     if len(coords) < min_samples:
         return []
@@ -48,7 +50,7 @@ def _cluster_locations(
         mask = labels == label
         members = coords[mask]
         centroid = members.mean(axis=0)
-        clusters.append((centroid, members))
+        clusters.append((centroid, members, labels, label))
 
     # Sort by cluster size, largest first
     clusters.sort(key=lambda x: len(x[1]), reverse=True)
@@ -121,17 +123,11 @@ def infer_routines(events: List[Dict]) -> Dict[str, Dict]:
         night_clusters = _cluster_locations(night_coords, eps_km=0.5, min_samples=3)
 
         if night_clusters:
-            centroid, members = night_clusters[0]  # Largest cluster
-            hours = [
-                night_events[i]["hour"]
-                for i in range(len(night_events))
-                if any(np.array_equal(night_coords[i], m) for m in members)
-            ]
-            days = [
-                night_events[i]["dow"]
-                for i in range(len(night_events))
-                if any(np.array_equal(night_coords[i], m) for m in members)
-            ]
+            centroid, members, labels, cluster_label = night_clusters[0]  # Largest cluster
+            # Use DBSCAN labels for O(N) membership check instead of O(N*M) array comparison
+            member_mask = labels == cluster_label
+            hours = [night_events[i]["hour"] for i in range(len(night_events)) if member_mask[i]]
+            days = [night_events[i]["dow"] for i in range(len(night_events)) if member_mask[i]]
 
             routines["HOME"] = {
                 "latitude": float(centroid[0]),
@@ -148,17 +144,11 @@ def infer_routines(events: List[Dict]) -> Dict[str, Dict]:
         work_clusters = _cluster_locations(work_coords, eps_km=0.5, min_samples=3)
 
         if work_clusters:
-            centroid, members = work_clusters[0]  # Largest cluster
-            hours = [
-                work_events[i]["hour"]
-                for i in range(len(work_events))
-                if any(np.array_equal(work_coords[i], m) for m in members)
-            ]
-            days = [
-                work_events[i]["dow"]
-                for i in range(len(work_events))
-                if any(np.array_equal(work_coords[i], m) for m in members)
-            ]
+            centroid, members, labels, cluster_label = work_clusters[0]  # Largest cluster
+            # Use DBSCAN labels for O(N) membership check instead of O(N*M) array comparison
+            member_mask = labels == cluster_label
+            hours = [work_events[i]["hour"] for i in range(len(work_events)) if member_mask[i]]
+            days = [work_events[i]["dow"] for i in range(len(work_events)) if member_mask[i]]
 
             routines["WORK"] = {
                 "latitude": float(centroid[0]),

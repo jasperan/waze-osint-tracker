@@ -1,10 +1,8 @@
 # analysis.py
 from typing import Any, Dict, List, Optional
 
-from database import Database
 
-
-def get_stats(db: Database) -> Dict[str, Any]:
+def get_stats(db) -> Dict[str, Any]:
     """Get summary statistics from the database."""
     total = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
     unique_users = db.execute("SELECT COUNT(DISTINCT username) FROM events").fetchone()[0]
@@ -25,28 +23,30 @@ def get_stats(db: Database) -> Dict[str, Any]:
         "unique_users": unique_users,
         "by_type": by_type,
         "first_event": time_range["first"],
-        "last_event": time_range["last"]
+        "last_event": time_range["last"],
     }
 
-def get_recent_events(db: Database, limit: int = 20) -> List[Dict[str, Any]]:
+
+def get_recent_events(db, limit: int = 20) -> List[Dict[str, Any]]:
     """Get most recent events."""
     rows = db.execute(
-        "SELECT * FROM events ORDER BY timestamp_ms DESC LIMIT ?",
-        (limit,)
+        "SELECT * FROM events ORDER BY timestamp_ms DESC LIMIT ?", (limit,)
     ).fetchall()
     return [dict(row) for row in rows]
 
-def get_user_events(db: Database, username: str) -> List[Dict[str, Any]]:
+
+def get_user_events(db, username: str) -> List[Dict[str, Any]]:
     """Get all events from a specific user."""
     rows = db.execute(
-        "SELECT * FROM events WHERE username = ? ORDER BY timestamp_ms",
-        (username,)
+        "SELECT * FROM events WHERE username = ? ORDER BY timestamp_ms", (username,)
     ).fetchall()
     return [dict(row) for row in rows]
 
-def get_users_summary(db: Database, limit: int = 50) -> List[Dict[str, Any]]:
+
+def get_users_summary(db, limit: int = 50) -> List[Dict[str, Any]]:
     """Get summary of users with event counts."""
-    rows = db.execute("""
+    rows = db.execute(
+        """
         SELECT
             username,
             COUNT(*) as event_count,
@@ -56,10 +56,13 @@ def get_users_summary(db: Database, limit: int = 50) -> List[Dict[str, Any]]:
         GROUP BY username
         ORDER BY event_count DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """,
+        (limit,),
+    ).fetchall()
     return [dict(row) for row in rows]
 
-def get_user_profile(db: Database, username: str) -> Optional[Dict[str, Any]]:
+
+def get_user_profile(db, username: str) -> Optional[Dict[str, Any]]:
     """Get detailed profile for a user."""
     events = get_user_events(db, username)
     if not events:
@@ -89,5 +92,5 @@ def get_user_profile(db: Database, username: str) -> Optional[Dict[str, Any]]:
         "last_seen": last_seen,
         "type_breakdown": type_counts,
         "center_location": {"lat": center_lat, "lon": center_lon},
-        "events": events
+        "events": events,
     }

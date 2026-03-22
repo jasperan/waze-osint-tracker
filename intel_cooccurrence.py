@@ -9,6 +9,18 @@ from typing import Dict, List
 from utils import haversine_m as _haversine_m
 
 
+def _grid_key(lat: float, lon: float, cell_size_deg: float) -> tuple:
+    """Return (row, col) grid cell index for a coordinate."""
+    return (int(lat // cell_size_deg), int(lon // cell_size_deg))
+
+
+def _neighbor_keys(row: int, col: int):
+    """Yield the 9 grid cells in the Moore neighborhood (self + 8 neighbors)."""
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            yield (row + dr, col + dc)
+
+
 def find_cooccurrences(
     events: List[Dict],
     spatial_threshold_m: float = 500,
@@ -46,6 +58,10 @@ def find_cooccurrences(
     degree_threshold = spatial_threshold_m / 111_000
     temporal_threshold_ms = temporal_threshold_s * 1000
 
+    # Spatial grid cell size — must be >= degree_threshold so that two events
+    # within spatial_threshold_m always land in the same or adjacent cells.
+    cell_size_deg = degree_threshold
+
     # Accumulator: (user_a, user_b) -> {"distances": [], "time_gaps": []}
     pair_data: Dict[tuple, Dict[str, list]] = defaultdict(
         lambda: {"distances": [], "time_gaps": []}
@@ -53,7 +69,13 @@ def find_cooccurrences(
 
     n = len(sorted_events)
 
-    # 2. Sweep-line
+    # 2. Sweep-line with spatial grid pruning
+    # We maintain a sliding window of "active" events (within temporal range).
+    # Active events are indexed into spatial grid cells so we only compare
+    # events in nearby cells instead of scanning the entire window.
+    grid: Dict[tuple, list] = defaultdict(list)  # cell -> list of window indices
+    window_start = 0  # left edge of the sliding window
+
     for i in range(n):
         ev_i = sorted_events[i]
         ts_i = ev_i["timestamp_ms"]
@@ -61,37 +83,62 @@ def find_cooccurrences(
         lat_i = ev_i["latitude"]
         lon_i = ev_i["longitude"]
 
-        for j in range(i + 1, n):
-            ev_j = sorted_events[j]
-            ts_j = ev_j["timestamp_ms"]
-
-            # Temporal window exhausted — stop inner loop
-            if ts_j - ts_i > temporal_threshold_ms:
+        # Expire old events from the window and grid
+        while window_start < i:
+            ts_old = sorted_events[window_start]["timestamp_ms"]
+            if ts_i - ts_old > temporal_threshold_ms:
+                ev_old = sorted_events[window_start]
+                old_key = _grid_key(ev_old["latitude"], ev_old["longitude"], cell_size_deg)
+                cell_list = grid[old_key]
+                # Remove first occurrence (always at the front since we expire in order)
+                if cell_list and cell_list[0] == window_start:
+                    cell_list.pop(0)
+                if not cell_list:
+                    del grid[old_key]
+                window_start += 1
+            else:
                 break
 
-            # 3. Skip same-username pairs
-            user_j = ev_j["username"]
-            if user_i == user_j:
+        # Look up candidate events from neighboring grid cells
+        row_i, col_i = _grid_key(lat_i, lon_i, cell_size_deg)
+        for neighbor_key in _neighbor_keys(row_i, col_i):
+            if neighbor_key not in grid:
                 continue
+            for j in grid[neighbor_key]:
+                ev_j = sorted_events[j]
+                ts_j = ev_j["timestamp_ms"]
 
-            # 4. Quick pre-filter on lat/lon difference
-            lat_j = ev_j["latitude"]
-            lon_j = ev_j["longitude"]
-            if abs(lat_i - lat_j) > degree_threshold or abs(lon_i - lon_j) > degree_threshold:
-                continue
+                # Temporal check (should be within window, but double-check)
+                if abs(ts_j - ts_i) > temporal_threshold_ms:
+                    continue
 
-            # 5. Full Haversine check
-            dist = _haversine_m(lat_i, lon_i, lat_j, lon_j)
-            if dist > spatial_threshold_m:
-                continue
+                # Skip same-username pairs
+                user_j = ev_j["username"]
+                if user_i == user_j:
+                    continue
 
-            # 6. Canonical pair ordering
-            pair = (min(user_i, user_j), max(user_i, user_j))
-            time_gap_s = abs(ts_j - ts_i) / 1000
-            pair_data[pair]["distances"].append(dist)
-            pair_data[pair]["time_gaps"].append(time_gap_s)
+                # Quick pre-filter on lat/lon difference
+                lat_j = ev_j["latitude"]
+                lon_j = ev_j["longitude"]
+                if abs(lat_i - lat_j) > degree_threshold or abs(lon_i - lon_j) > degree_threshold:
+                    continue
 
-    # 7. Filter by min_count and build results
+                # Full Haversine check
+                dist = _haversine_m(lat_i, lon_i, lat_j, lon_j)
+                if dist > spatial_threshold_m:
+                    continue
+
+                # Canonical pair ordering
+                pair = (min(user_i, user_j), max(user_i, user_j))
+                time_gap_s = abs(ts_j - ts_i) / 1000
+                pair_data[pair]["distances"].append(dist)
+                pair_data[pair]["time_gaps"].append(time_gap_s)
+
+        # Add current event to the grid
+        grid_key_i = _grid_key(lat_i, lon_i, cell_size_deg)
+        grid[grid_key_i].append(i)
+
+    # 3. Filter by min_count and build results
     results: List[Dict] = []
     for (user_a, user_b), data in pair_data.items():
         co_count = len(data["distances"])

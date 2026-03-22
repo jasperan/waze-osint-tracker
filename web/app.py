@@ -31,6 +31,12 @@ MAX_SSE_CLIENTS = 50
 # Stats cache (expensive query - cache for 60 seconds)
 _stats_cache = {"data": None, "expires": 0}
 
+# Connection pool for SQLite databases — avoids opening/closing on every request.
+# Maps db_path -> Database instance.  Thread-safe because SQLite connections are
+# opened with check_same_thread=False and WAL mode handles concurrent reads.
+_db_pool: dict = {}
+_db_pool_lock = threading.Lock()
+
 # Status file path for collector updates
 STATUS_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "collector_status.json"
@@ -67,11 +73,26 @@ DB_PATHS = {
 DB_PATH = DB_PATHS["madrid"]
 
 
+def _get_pooled_sqlite(db_path: str) -> Database:
+    """Return a cached SQLite Database connection, creating one if needed.
+
+    Connections use ``check_same_thread=False`` so they can be shared across
+    Flask's threaded request handlers.  WAL mode (set by Database.__init__)
+    handles concurrent reads safely.
+    """
+    with _db_pool_lock:
+        if db_path in _db_pool:
+            return _db_pool[db_path]
+        db = Database(db_path, check_same_thread=False)
+        _db_pool[db_path] = db
+        return db
+
+
 def get_db(region=None):
     """Get database connection for a specific region or default.
 
     If config specifies ``database_type: oracle``, returns an OracleDatabase
-    instance.  Otherwise falls back to per-region SQLite files.
+    instance.  Otherwise falls back to per-region SQLite files (pooled).
     """
     try:
         config = _load_web_config()
@@ -84,15 +105,16 @@ def get_db(region=None):
         return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
 
     if region and region in DB_PATHS:
-        return Database(DB_PATHS[region])
-    return Database(DB_PATH)
+        return _get_pooled_sqlite(DB_PATHS[region])
+    return _get_pooled_sqlite(DB_PATH)
 
 
 def get_all_dbs():
     """Get connections to all existing databases.
 
     With Oracle, returns a single ``("all", db)`` pair since all regions live
-    in one partitioned table.  With SQLite, returns one pair per region file.
+    in one partitioned table.  With SQLite, returns one pair per region file
+    using the connection pool.
     """
     try:
         config = _load_web_config()
@@ -109,7 +131,7 @@ def get_all_dbs():
     for region, path in DB_PATHS.items():
         if os.path.exists(path):
             try:
-                dbs.append((region, Database(path)))
+                dbs.append((region, _get_pooled_sqlite(path)))
             except Exception:
                 logger.warning("Failed to open database for region %s", region)
     return dbs
