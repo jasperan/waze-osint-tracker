@@ -145,7 +145,6 @@ def query_all_dbs(query_func):
             results = query_func(db, region)
             if results:
                 all_results.extend(results)
-            db.close()
         except Exception as e:
             print(f"Error querying {region}: {e}")
     return all_results
@@ -190,7 +189,6 @@ def api_stats():
                     if last_event is None or row["last_event"] > last_event:
                         last_event = row["last_event"]
 
-            db.close()
         except Exception as e:
             print(f"Stats error for {region}: {e}")
 
@@ -224,7 +222,6 @@ def api_events():
         # With SQLite, skip databases that don't match the filter.
         # With Oracle (region == "all"), add a SQL WHERE clause instead.
         if region_filter and region != "all" and region != region_filter:
-            db.close()
             continue
         try:
             query = "SELECT * FROM events WHERE 1=1"
@@ -286,7 +283,6 @@ def api_events():
                     }
                 )
 
-            db.close()
         except Exception as e:
             print(f"Events error for {region}: {e}")
 
@@ -313,7 +309,6 @@ def api_heatmap():
         # With SQLite, skip databases that don't match the filter.
         # With Oracle (region == "all"), add a SQL WHERE clause instead.
         if region_filter and region != "all" and region != region_filter:
-            db.close()
             continue
         try:
             query = "SELECT latitude, longitude, COUNT(*) as weight FROM events WHERE 1=1"
@@ -363,7 +358,6 @@ def api_heatmap():
                 key = (round(row["latitude"], 4), round(row["longitude"], 4))
                 location_weights[key] = location_weights.get(key, 0) + row["weight"]
 
-            db.close()
         except Exception as e:
             print(f"Heatmap error for {region}: {e}")
 
@@ -378,7 +372,6 @@ def api_user(username):
     """Get user profile and events."""
     db = get_db()
     profile = get_user_profile(db, username)
-    db.close()
 
     if not profile:
         return jsonify({"error": "User not found"}), 404
@@ -416,7 +409,6 @@ def api_types():
                 if st:  # Only track non-empty subtypes
                     subtype_counts[t][st] = subtype_counts[t].get(st, 0) + count
 
-            db.close()
         except Exception as e:
             print(f"Types error for {region}: {e}")
 
@@ -466,7 +458,6 @@ def api_users():
                 u = row["username"]
                 user_counts[u] = user_counts.get(u, 0) + row["count"]
 
-            db.close()
         except Exception as e:
             print(f"Users error for {region}: {e}")
 
@@ -511,7 +502,6 @@ def api_leaderboard():
                     ):
                         user_stats[u]["last_seen"] = row["last_seen"]
 
-            db.close()
         except Exception as e:
             print(f"Leaderboard error for {region}: {e}")
 
@@ -615,7 +605,6 @@ def api_recent_activity():
                     }
                 )
 
-            db.close()
         except Exception as e:
             print(f"Recent activity error for {region}: {e}")
 
@@ -690,7 +679,6 @@ def status_monitor_thread():
                                 broadcast_event(event_data)
 
                             last_event_ids[region] = current_max
-                    db.close()
                 except Exception:
                     logger.debug("Error monitoring region %s", region)
 
@@ -840,55 +828,52 @@ def api_trips(username):
     classify = request.args.get("classify", "true").lower() == "true"
 
     db = get_db()
-    try:
-        cursor = db.execute(
-            "SELECT latitude, longitude, timestamp_ms, report_type "
-            "FROM events WHERE username = ? ORDER BY timestamp_ms",
-            (username,),
-        )
-        events = []
-        for row in cursor.fetchall():
-            if isinstance(row, dict):
-                events.append(row)
-            else:
-                events.append(
-                    {
-                        "latitude": row[0],
-                        "longitude": row[1],
-                        "timestamp_ms": row[2],
-                        "report_type": row[3],
-                    }
-                )
+    cursor = db.execute(
+        "SELECT latitude, longitude, timestamp_ms, report_type "
+        "FROM events WHERE username = ? ORDER BY timestamp_ms",
+        (username,),
+    )
+    events = []
+    for row in cursor.fetchall():
+        if isinstance(row, dict):
+            events.append(row)
+        else:
+            events.append(
+                {
+                    "latitude": row[0],
+                    "longitude": row[1],
+                    "timestamp_ms": row[2],
+                    "report_type": row[3],
+                }
+            )
 
-        if since:
-            cutoff_ms = _parse_since_to_ms(since)
-            events = [e for e in events if e["timestamp_ms"] >= cutoff_ms]
+    if since:
+        cutoff_ms = _parse_since_to_ms(since)
+        events = [e for e in events if e["timestamp_ms"] >= cutoff_ms]
 
-        if not events:
-            return jsonify({"error": "No events found", "trips": []}), 404
+    if not events:
+        return jsonify({"error": "No events found", "trips": []}), 404
 
-        from trip_reconstruction import get_trip_summary, reconstruct_trips
+    from trip_reconstruction import get_trip_summary, reconstruct_trips
 
-        routines = None
-        if classify:
-            try:
-                from intel_routines import infer_routines
+    routines = None
+    if classify:
+        try:
+            from intel_routines import infer_routines
 
-                routines = infer_routines(events)
-            except Exception:
-                pass
+            routines = infer_routines(events)
+        except Exception:
+            pass
 
-        trips = reconstruct_trips(events, username, routines=routines)
+    trips = reconstruct_trips(events, username, routines=routines)
 
-        return jsonify(
-            {
-                "username": username,
-                "trips": [t.to_dict() for t in trips[:limit]],
-                "summary": get_trip_summary(trips),
-            }
-        )
-    finally:
-        db.close()
+    return jsonify(
+        {
+            "username": username,
+            "trips": [t.to_dict() for t in trips[:limit]],
+            "summary": get_trip_summary(trips),
+        }
+    )
 
 
 # === Privacy Score API endpoints ===
@@ -898,76 +883,73 @@ def api_trips(username):
 def api_privacy_score(username):
     """Get full privacy risk score breakdown for a user."""
     db = get_db()
+    cursor = db.execute(
+        "SELECT latitude, longitude, timestamp_ms, report_type "
+        "FROM events WHERE username = ? ORDER BY timestamp_ms",
+        (username,),
+    )
+    events = []
+    for row in cursor.fetchall():
+        if isinstance(row, dict):
+            events.append(row)
+        else:
+            events.append(
+                {
+                    "latitude": row[0],
+                    "longitude": row[1],
+                    "timestamp_ms": row[2],
+                    "report_type": row[3],
+                }
+            )
+
+    if not events:
+        return jsonify({"error": "User not found"}), 404
+
+    from privacy_score import compute_privacy_score
+
+    routines = None
     try:
-        cursor = db.execute(
-            "SELECT latitude, longitude, timestamp_ms, report_type "
-            "FROM events WHERE username = ? ORDER BY timestamp_ms",
-            (username,),
-        )
-        events = []
-        for row in cursor.fetchall():
-            if isinstance(row, dict):
-                events.append(row)
-            else:
-                events.append(
-                    {
-                        "latitude": row[0],
-                        "longitude": row[1],
-                        "timestamp_ms": row[2],
-                        "report_type": row[3],
-                    }
-                )
+        from intel_routines import infer_routines
 
-        if not events:
-            return jsonify({"error": "User not found"}), 404
+        routines = infer_routines(events)
+    except Exception:
+        pass
 
-        from privacy_score import compute_privacy_score
+    correlations = None
+    try:
+        config = _load_web_config()
+        if config.get("database_type") == "oracle":
+            corr_cursor = db.execute(
+                "SELECT user_a, user_b, combined_score, correlation_type "
+                "FROM identity_correlations "
+                "WHERE user_a = ? OR user_b = ? "
+                "ORDER BY combined_score DESC FETCH FIRST 10 ROWS ONLY",
+                (username, username),
+            )
+            correlations = []
+            for r in corr_cursor.fetchall():
+                if isinstance(r, dict):
+                    correlations.append(r)
+                else:
+                    correlations.append(
+                        {
+                            "user_a": r[0],
+                            "user_b": r[1],
+                            "combined_score": r[2],
+                            "correlation_type": r[3],
+                        }
+                    )
+    except Exception:
+        pass
 
-        routines = None
-        try:
-            from intel_routines import infer_routines
-
-            routines = infer_routines(events)
-        except Exception:
-            pass
-
-        correlations = None
-        try:
-            config = _load_web_config()
-            if config.get("database_type") == "oracle":
-                corr_cursor = db.execute(
-                    "SELECT user_a, user_b, combined_score, correlation_type "
-                    "FROM identity_correlations "
-                    "WHERE user_a = ? OR user_b = ? "
-                    "ORDER BY combined_score DESC FETCH FIRST 10 ROWS ONLY",
-                    (username, username),
-                )
-                correlations = []
-                for r in corr_cursor.fetchall():
-                    if isinstance(r, dict):
-                        correlations.append(r)
-                    else:
-                        correlations.append(
-                            {
-                                "user_a": r[0],
-                                "user_b": r[1],
-                                "combined_score": r[2],
-                                "correlation_type": r[3],
-                            }
-                        )
-        except Exception:
-            pass
-
-        result = compute_privacy_score(
-            events=events,
-            routines=routines,
-            correlations=correlations,
-        )
-        result["username"] = username
-        result["event_count"] = len(events)
-        return jsonify(result)
-    finally:
-        db.close()
+    result = compute_privacy_score(
+        events=events,
+        routines=routines,
+        correlations=correlations,
+    )
+    result["username"] = username
+    result["event_count"] = len(events)
+    return jsonify(result)
 
 
 @app.route("/api/privacy-score/leaderboard")
