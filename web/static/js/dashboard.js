@@ -207,14 +207,6 @@ WIDGET_CONTENT['type-breakdown'] = () => `
 
 WIDGET_CONTENT['privacy'] = () => '<div class="privacy-list" id="privacy-list">Loading risk scores...</div>';
 
-function initDefaultWidgets() {
-    createWidget('stats', 'Statistics', WIDGET_CONTENT['stats'](), { x: 0, y: 0, w: 3, h: 5 });
-    createWidget('leaderboard', 'Top Contributors', WIDGET_CONTENT['leaderboard'](), { x: 0, y: 5, w: 3, h: 7 });
-    createWidget('feed', 'Live Feed', WIDGET_CONTENT['feed'](), { x: 3, y: 8, w: 6, h: 5 });
-    createWidget('filters', 'Filters', WIDGET_CONTENT['filters'](), { x: 9, y: 0, w: 3, h: 6 });
-    createWidget('display', 'Display', WIDGET_CONTENT['display'](), { x: 9, y: 6, w: 3, h: 4 });
-}
-
 // === Deck Preset System ===
 
 const DECK_PRESETS = {
@@ -1534,84 +1526,83 @@ async function loadPrivacyLeaderboard() {
 
 // === Initialize Everything ===
 
-// Initialize deck selector, layer bar, time controls, timeline
-initDeckSelector();
-initLayerBar();
-initTimeControls();
-initTimeline();
-switchDeck('live');
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. GridStack is already initialized at the top of this file
 
-// Then load remaining data
-loadStats().then(() => {
-    const total = document.getElementById('stat-total').textContent;
-    if (total && total !== '--') {
-        document.getElementById('status-text').textContent = `${total} events loaded`;
-    }
-});
-loadSparklines();
-loadRecentActivity();
-connectSSE();
+    // 2. Build toolbar components
+    initDeckSelector();
+    initTimeControls();
+    initLayerBar();
+    initTimeline();
 
-// Refresh stats, leaderboard, and sparklines every 60 seconds
-setInterval(() => {
-    loadStats();
-    loadLeaderboard();
+    // 3. Load default deck (creates widgets and loads data)
+    switchDeck('live');
+
+    // 4. Start SSE and load recent activity for feed backfill
+    connectSSE();
+    loadRecentActivity();
     loadSparklines();
-}, 60000);
 
-// Refresh timeline every 2 minutes
-setInterval(loadTimelineData, 120000);
+    // 5. Data refresh intervals
+    setInterval(loadStats, 60000);
+    setInterval(loadSparklines, 60000);
+    setInterval(loadCollectorStatus, 10000);
+    setInterval(loadAlerts, 30000);
+    setInterval(loadTimelineData, 120000);
+    setInterval(loadTypeBreakdown, 60000);
 
-// Refresh new widgets on intervals
-setInterval(loadCollectorStatus, 10000);
-setInterval(loadAlerts, 30000);
-setInterval(loadTypeBreakdown, 60000);
+    // Process pending teleports every second
+    setInterval(() => {
+        const autoFollow = document.getElementById('auto-follow');
+        if (autoFollow && autoFollow.checked && pendingTeleport) {
+            const now = Date.now();
+            if (now - lastTeleportTime >= TELEPORT_INTERVAL) {
+                lastTeleportTime = now;
+                map.flyTo([pendingTeleport.lat, pendingTeleport.lng], 14, { duration: 0.8 });
 
-// Process pending teleports every 10 seconds
-setInterval(() => {
-    const autoFollow = document.getElementById('auto-follow');
-    if (autoFollow && autoFollow.checked && pendingTeleport) {
-        const now = Date.now();
-        if (now - lastTeleportTime >= TELEPORT_INTERVAL) {
-            lastTeleportTime = now;
-            map.flyTo([pendingTeleport.lat, pendingTeleport.lng], 14, { duration: 0.8 });
+                const pulseMarker = L.circleMarker([pendingTeleport.lat, pendingTeleport.lng], {
+                    radius: 15,
+                    color: pendingTeleport.color,
+                    fillColor: pendingTeleport.color,
+                    fillOpacity: 0.4,
+                    weight: 2
+                }).addTo(map);
+                setTimeout(() => map.removeLayer(pulseMarker), 2500);
 
-            const pulseMarker = L.circleMarker([pendingTeleport.lat, pendingTeleport.lng], {
-                radius: 15,
-                color: pendingTeleport.color,
-                fillColor: pendingTeleport.color,
-                fillOpacity: 0.4,
-                weight: 2
-            }).addTo(map);
-            setTimeout(() => map.removeLayer(pulseMarker), 2500);
-
-            pendingTeleport = null;
+                pendingTeleport = null;
+            }
         }
-    }
-}, 1000);
+    }, 1000);
+});
 
-// Keyboard shortcuts
+// Keyboard shortcuts: layer toggles, deck switching (1-4)
 document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+    // Deck switching with number keys
+    const deckKeys = { '1': 'live', '2': 'intel', '3': 'analytics', '4': 'risk' };
+    if (deckKeys[e.key]) {
+        e.preventDefault();
+        switchDeck(deckKeys[e.key]);
+        return;
+    }
 
     switch(e.key.toLowerCase()) {
         case 'h':
             const heatmapCheckbox = document.getElementById('show-heatmap');
-            heatmapCheckbox.checked = !heatmapCheckbox.checked;
-            toggleHeatmap();
+            if (heatmapCheckbox) { heatmapCheckbox.checked = !heatmapCheckbox.checked; toggleHeatmap(); }
             break;
         case 'm':
             const markersCheckbox = document.getElementById('show-markers');
-            markersCheckbox.checked = !markersCheckbox.checked;
-            toggleMarkers();
+            if (markersCheckbox) { markersCheckbox.checked = !markersCheckbox.checked; toggleMarkers(); }
             break;
         case 'f':
             const followCheckbox = document.getElementById('auto-follow');
-            followCheckbox.checked = !followCheckbox.checked;
+            if (followCheckbox) followCheckbox.checked = !followCheckbox.checked;
             break;
         case 's':
             const soundCheckbox = document.getElementById('sound-enabled');
-            soundCheckbox.checked = !soundCheckbox.checked;
+            if (soundCheckbox) soundCheckbox.checked = !soundCheckbox.checked;
             break;
         case 'r':
             resetFilters();

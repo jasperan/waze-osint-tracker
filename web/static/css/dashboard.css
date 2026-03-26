@@ -150,6 +150,12 @@ body {
     pointer-events: auto;
 }
 
+.grid-stack-item-content {
+    background: transparent;
+    overflow: hidden;
+    border-radius: 6px;
+}
+
 /* === Widget panel styling === */
 .widget-panel {
     background: rgba(12, 16, 23, 0.92);
@@ -594,40 +600,14 @@ body {
 .feed-location { color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; }
 .feed-time { color: var(--text-muted); font-size: 0.7rem; margin-left: auto; white-space: nowrap; }
 
-/* Status Bar */
-.status-bar {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    background: rgba(18, 18, 26, 0.9);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--glass-border);
-    padding: 10px 16px;
-    border-radius: 4px;
-    z-index: 1000;
-    font-size: 0.8rem;
-    font-family: 'IBM Plex Mono', monospace;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    max-width: 400px;
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--primary);
-    box-shadow: 0 0 10px var(--primary);
-    animation: pulse 2s infinite;
-    flex-shrink: 0;
-}
-
+/* Status text (shown inside toolbar connection badge area) */
 #status-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 0.7rem;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-secondary);
 }
 
 /* Legend */
@@ -1212,4 +1192,25 @@ body {
   font-size: 0.85rem;
   min-width: 28px;
   text-align: right;
+}
+
+/* === Responsive Breakpoints === */
+
+@media (max-width: 1200px) {
+  .deck-selector { gap: 2px; }
+  .deck-btn { padding: 4px 8px; font-size: 0.6rem; }
+}
+
+@media (max-width: 1024px) {
+  .deck-selector { display: none; }
+  .top-toolbar { padding: 0 8px; }
+  .app-subtitle { display: none; }
+}
+
+@media (max-width: 768px) {
+  .time-presets { gap: 1px; }
+  .time-btn { padding: 3px 5px; font-size: 0.6rem; }
+  .time-jump { display: none; }
+  .layer-bar { gap: 1px; padding: 2px; }
+  .layer-btn { width: 28px; height: 28px; font-size: 0.85rem; }
 }
