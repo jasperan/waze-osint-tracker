@@ -39,9 +39,34 @@ function createWidget(id, title, contentHTML, gridOpts) {
 // Widget content registry
 const WIDGET_CONTENT = {
     'stats': () => `
-        <div class="stat-row"><span class="stat-label">Total Events</span><span class="stat-value" id="stat-total">--</span></div>
-        <div class="stat-row"><span class="stat-label">Unique Users</span><span class="stat-value" id="stat-users">--</span></div>
-        <div class="stat-row"><span class="stat-label">Date Range</span><span class="stat-value" id="stat-time">--</span></div>
+        <div class="stat-row">
+            <span class="stat-label">Total Events</span>
+            <div class="stat-right">
+                <canvas class="sparkline" id="spark-events"></canvas>
+                <span class="stat-value" id="stat-total">--</span>
+                <span class="stat-delta" id="delta-total"></span>
+            </div>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Unique Users</span>
+            <div class="stat-right">
+                <span class="stat-value" id="stat-users">--</span>
+            </div>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Date Range</span>
+            <div class="stat-right">
+                <span class="stat-value" id="stat-time">--</span>
+            </div>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Events/Hour</span>
+            <div class="stat-right">
+                <canvas class="sparkline" id="spark-rate"></canvas>
+                <span class="stat-value" id="stat-rate">--</span>
+                <span class="stat-delta" id="delta-rate"></span>
+            </div>
+        </div>
     `,
     'leaderboard': () => `<div class="leaderboard" id="leaderboard"></div>`,
     'feed': () => `
@@ -132,6 +157,31 @@ const WIDGET_CONTENT = {
     `,
 };
 
+// === Tabbed Widget System ===
+
+function createTabbedWidget(id, title, tabs, gridOpts) {
+  const tabsHTML = tabs.map((t, i) =>
+    `<button class="widget-tab${i === 0 ? ' active' : ''}" data-tab="${t.id}" onclick="switchWidgetTab('${id}', '${t.id}')">${t.label}</button>`
+  ).join('');
+  const panelsHTML = tabs.map((t, i) =>
+    `<div class="tab-panel${i === 0 ? ' active' : ''}" id="tab-${id}-${t.id}">${t.content}</div>`
+  ).join('');
+  const contentHTML = `
+    <div class="widget-tabs">${tabsHTML}</div>
+    <div class="tab-panels">${panelsHTML}</div>
+  `;
+  createWidget(id, title, contentHTML, gridOpts);
+}
+
+function switchWidgetTab(widgetId, tabId) {
+  const widget = document.getElementById(`widget-${widgetId}`);
+  if (!widget) return;
+  widget.querySelectorAll('.widget-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  widget.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${widgetId}-${tabId}`));
+}
+
+WIDGET_CONTENT['intel'] = () => ''; // placeholder - content provided by createTabbedWidget
+
 function initDefaultWidgets() {
     createWidget('stats', 'Statistics', WIDGET_CONTENT['stats'](), { x: 0, y: 0, w: 3, h: 5 });
     createWidget('leaderboard', 'Top Contributors', WIDGET_CONTENT['leaderboard'](), { x: 0, y: 5, w: 3, h: 7 });
@@ -159,8 +209,13 @@ const DECK_PRESETS = {
         icon: '\u25C8',
         widgets: [
             { id: 'filters', title: 'Filters', x: 0, y: 0, w: 3, h: 6 },
-            { id: 'leaderboard', title: 'Top Contributors', x: 0, y: 6, w: 3, h: 7 },
-            { id: 'feed', title: 'Live Feed', x: 9, y: 0, w: 3, h: 6 },
+            { id: 'intel-panel', title: 'Intelligence', x: 0, y: 6, w: 3, h: 7,
+              tabs: [
+                { id: 'live', label: 'LIVE', contentId: 'feed' },
+                { id: 'users', label: 'TOP USERS', contentId: 'leaderboard' },
+              ]
+            },
+            { id: 'display', title: 'Display', x: 9, y: 0, w: 3, h: 4 },
         ],
         layers: ['markers'],
         mapView: { center: [45, 10], zoom: 4 },
@@ -219,9 +274,17 @@ function switchDeck(deckKey) {
 
     // Add widgets for this deck
     deck.widgets.forEach(w => {
-        const contentFn = WIDGET_CONTENT[w.id];
-        if (contentFn) {
-            createWidget(w.id, w.title, contentFn(), { x: w.x, y: w.y, w: w.w, h: w.h });
+        if (w.tabs) {
+            createTabbedWidget(w.id, w.title, w.tabs.map(t => ({
+                id: t.id,
+                label: t.label,
+                content: WIDGET_CONTENT[t.contentId] ? WIDGET_CONTENT[t.contentId]() : '',
+            })), { x: w.x, y: w.y, w: w.w, h: w.h });
+        } else {
+            const contentFn = WIDGET_CONTENT[w.id];
+            if (contentFn) {
+                createWidget(w.id, w.title, contentFn(), { x: w.x, y: w.y, w: w.w, h: w.h });
+            }
         }
     });
 
@@ -330,6 +393,26 @@ const typeColors = {
     'CONSTRUCTION': '#64748b'
 };
 
+// === Type Badge Config ===
+const TYPE_BADGES = {
+  ACCIDENT:    { color: '#f87171', bg: 'rgba(248,113,113,0.12)', label: 'ACC' },
+  HAZARD:      { color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  label: 'HAZ' },
+  JAM:         { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)',  label: 'JAM' },
+  POLICE:      { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  label: 'POL' },
+  ROAD_CLOSED: { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', label: 'RCL' },
+  CHIT_CHAT:   { color: '#34d399', bg: 'rgba(52,211,153,0.12)',  label: 'CHT' },
+};
+
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return '--';
+  const diff = Date.now() - new Date(timestamp).getTime();
+  if (diff < 0) return 'just now';
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+  return `${Math.floor(diff/86400000)}d ago`;
+}
+
 // Auto-follow throttling (teleport max once per 10 seconds)
 let lastTeleportTime = 0;
 const TELEPORT_INTERVAL = 10000;
@@ -362,6 +445,73 @@ async function loadStats() {
     } catch (err) {
         console.error('Failed to load stats:', err);
     }
+}
+
+// === Sparkline Renderer ===
+
+function drawSparkline(canvas, data, color) {
+  if (!canvas || !data || data.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // Fill area under curve
+  ctx.lineTo(w, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  ctx.fillStyle = color.replace(')', ',0.08)').replace('rgb', 'rgba');
+  ctx.fill();
+}
+
+async function loadSparklines() {
+  try {
+    const res = await fetch('/api/timeline?hours=24&buckets=24');
+    const data = await res.json();
+    if (!data.buckets) return;
+    const counts = data.buckets.map(b => b.count);
+
+    const evtCanvas = document.getElementById('spark-events');
+    if (evtCanvas) drawSparkline(evtCanvas, counts, '#e8a817');
+
+    const rateCanvas = document.getElementById('spark-rate');
+    if (rateCanvas) drawSparkline(rateCanvas, counts, '#3b82f6');
+
+    // Calculate delta (last hour vs previous hour)
+    if (counts.length >= 2) {
+      const lastHour = counts[counts.length - 1] || 0;
+      const prevHour = counts[counts.length - 2] || 1;
+      const delta = ((lastHour - prevHour) / Math.max(prevHour, 1) * 100).toFixed(1);
+      const deltaEl = document.getElementById('delta-total');
+      if (deltaEl) {
+        deltaEl.textContent = `${delta > 0 ? '+' : ''}${delta}%`;
+        deltaEl.className = 'stat-delta ' + (delta >= 0 ? 'delta-up' : 'delta-down');
+      }
+    }
+
+    // Update events/hour stat
+    const totalEvents = counts.reduce((a, b) => a + b, 0);
+    const rateEl = document.getElementById('stat-rate');
+    if (rateEl) rateEl.textContent = (totalEvents / Math.max(counts.length, 1)).toFixed(1);
+  } catch (err) {
+    console.error('Failed to load sparklines:', err);
+  }
 }
 
 async function loadTypes() {
@@ -722,21 +872,25 @@ function toggleMarkers() {
 
 function addFeedItem(data) {
     const feed = document.getElementById('feed-items');
-    const item = document.createElement('div');
-    item.className = 'feed-item new';
+    if (!feed) return;
 
     if (data.type === 'new_event' && data.event) {
         const e = data.event;
-        const time = new Date(e.timestamp).toLocaleTimeString();
-        const color = typeColors[e.report_type] || '#64748b';
+        const eventType = e.report_type || e.type || '';
+        const badge = TYPE_BADGES[eventType] || { color: '#64748b', bg: 'rgba(100,116,139,0.1)', label: eventType?.substring(0,3) || '???' };
+        const age = Date.now() - new Date(e.timestamp || Date.now()).getTime();
+        const isNew = age < 300000; // <5 min
+        const item = document.createElement('div');
+        item.className = 'feed-item' + (isNew ? ' feed-item-new' : '');
         item.innerHTML = `
-            <span class="type" style="color:${color}">${e.report_type}</span>
-            <span class="location">${e.grid_cell || `${e.latitude.toFixed(2)}, ${e.longitude.toFixed(2)}`}</span>
-            <span class="time">${time}</span>
+            <span class="feed-badge" style="color:${badge.color};background:${badge.bg};border:1px solid ${badge.color}33">${badge.label}</span>
+            <span class="feed-user">${e.username || 'anonymous'}</span>
+            <span class="feed-location">${(e.latitude || 0).toFixed(2)}, ${(e.longitude || 0).toFixed(2)}</span>
+            <span class="feed-time">${formatTimeAgo(e.timestamp)}</span>
         `;
-        item.style.borderLeftColor = color;
 
         // Auto-follow: teleport to new event location (throttled)
+        const color = typeColors[eventType] || badge.color;
         const autoFollow = document.getElementById('auto-follow');
         if (autoFollow && autoFollow.checked && e.latitude && e.longitude) {
             const now = Date.now();
@@ -759,14 +913,12 @@ function addFeedItem(data) {
             }
         }
 
-        playNotificationSound();
-
         // Make event items clickable to navigate to location
         if (e.latitude && e.longitude) {
             item.classList.add('clickable');
             item.dataset.lat = e.latitude;
             item.dataset.lng = e.longitude;
-            item.dataset.type = e.report_type;
+            item.dataset.type = eventType;
             item.title = 'Click to view on map';
             item.addEventListener('click', () => {
                 const lat = parseFloat(item.dataset.lat);
@@ -785,28 +937,32 @@ function addFeedItem(data) {
                 setTimeout(() => map.removeLayer(pulseMarker), 3000);
             });
         }
+
+        feed.prepend(item);
+
+        if (typeof playNotificationSound === 'function') playNotificationSound();
     } else if (data.type === 'status') {
         if (data.alerts_found === 0 && data.new_events === 0) {
             return;
         }
 
+        const item = document.createElement('div');
+        item.className = 'feed-item';
         const color = typeColors[data.event_types?.[0]] || '#00d4ff';
         item.innerHTML = `
-            <span class="type" style="color:var(--text-muted)">SCAN</span>
-            <span class="location">${data.cell_name} (${data.country})</span>
-            <span class="time">${data.cell_idx}/${data.total_cells} • +${data.new_events}</span>
+            <span class="feed-badge" style="color:var(--text-muted);background:rgba(100,116,139,0.1);border:1px solid rgba(100,116,139,0.2)">SCN</span>
+            <span class="feed-user">${data.cell_name || 'scan'}</span>
+            <span class="feed-location">${data.country || '--'}</span>
+            <span class="feed-time">${data.cell_idx}/${data.total_cells} +${data.new_events}</span>
         `;
-        item.style.borderLeftColor = data.new_events > 0 ? 'var(--primary)' : 'var(--border)';
 
         document.getElementById('status-text').textContent =
             `[${data.region.toUpperCase()}] ${data.cell_name} (${data.country}) • ${data.alerts_found} alerts, +${data.new_events} new`;
+
+        feed.prepend(item);
     } else {
         return;
     }
-
-    feed.insertBefore(item, feed.firstChild);
-
-    setTimeout(() => item.classList.remove('new'), 1000);
 
     while (feed.children.length > 50) {
         feed.removeChild(feed.lastChild);
@@ -1093,13 +1249,15 @@ loadStats().then(() => {
         document.getElementById('status-text').textContent = `${total} events loaded`;
     }
 });
+loadSparklines();
 loadRecentActivity();
 connectSSE();
 
-// Refresh stats and leaderboard every 60 seconds
+// Refresh stats, leaderboard, and sparklines every 60 seconds
 setInterval(() => {
     loadStats();
     loadLeaderboard();
+    loadSparklines();
 }, 60000);
 
 // Refresh timeline every 2 minutes
