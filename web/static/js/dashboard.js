@@ -140,6 +140,117 @@ function initDefaultWidgets() {
     createWidget('display', 'Display', WIDGET_CONTENT['display'](), { x: 9, y: 6, w: 3, h: 4 });
 }
 
+// === Deck Preset System ===
+
+const DECK_PRESETS = {
+    live: {
+        name: 'Live Collection',
+        icon: '\u25C9',
+        widgets: [
+            { id: 'stats', title: 'Statistics', x: 0, y: 0, w: 3, h: 5 },
+            { id: 'feed', title: 'Live Feed', x: 0, y: 5, w: 3, h: 8 },
+            { id: 'display', title: 'Display', x: 9, y: 0, w: 3, h: 4 },
+        ],
+        layers: ['heatmap'],
+        mapView: { center: [45, 10], zoom: 4 },
+    },
+    intel: {
+        name: 'User Intelligence',
+        icon: '\u25C8',
+        widgets: [
+            { id: 'filters', title: 'Filters', x: 0, y: 0, w: 3, h: 6 },
+            { id: 'leaderboard', title: 'Top Contributors', x: 0, y: 6, w: 3, h: 7 },
+            { id: 'feed', title: 'Live Feed', x: 9, y: 0, w: 3, h: 6 },
+        ],
+        layers: ['markers'],
+        mapView: { center: [45, 10], zoom: 4 },
+    },
+    analytics: {
+        name: 'Traffic Analytics',
+        icon: '\u25A3',
+        widgets: [
+            { id: 'stats', title: 'Statistics', x: 0, y: 0, w: 4, h: 5 },
+            { id: 'filters', title: 'Filters', x: 8, y: 0, w: 4, h: 5 },
+            { id: 'leaderboard', title: 'Top Contributors', x: 0, y: 5, w: 4, h: 6 },
+            { id: 'feed', title: 'Live Feed', x: 8, y: 5, w: 4, h: 6 },
+        ],
+        layers: ['heatmap', 'markers'],
+        mapView: { center: [30, 0], zoom: 3 },
+    },
+    risk: {
+        name: 'Privacy Risk',
+        icon: '\u25B2',
+        widgets: [
+            { id: 'stats', title: 'Statistics', x: 0, y: 0, w: 3, h: 5 },
+            { id: 'leaderboard', title: 'Top Contributors', x: 0, y: 5, w: 3, h: 7 },
+            { id: 'feed', title: 'Live Feed', x: 9, y: 0, w: 3, h: 6 },
+        ],
+        layers: ['markers'],
+        mapView: { center: [45, 10], zoom: 4 },
+    },
+};
+
+let currentDeck = 'live';
+
+function initDeckSelector() {
+    const container = document.getElementById('deck-selector');
+    if (!container) return;
+    Object.entries(DECK_PRESETS).forEach(([key, deck]) => {
+        const btn = document.createElement('button');
+        btn.className = 'deck-btn' + (key === 'live' ? ' active' : '');
+        btn.dataset.deck = key;
+        btn.innerHTML = `<span class="deck-icon">${deck.icon}</span> ${deck.name}`;
+        btn.onclick = () => switchDeck(key);
+        container.appendChild(btn);
+    });
+}
+
+function switchDeck(deckKey) {
+    const deck = DECK_PRESETS[deckKey];
+    if (!deck) return;
+    currentDeck = deckKey;
+
+    // Update active button
+    document.querySelectorAll('.deck-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.deck-btn[data-deck="${deckKey}"]`)?.classList.add('active');
+
+    // Clear all widgets
+    grid.removeAll();
+
+    // Add widgets for this deck
+    deck.widgets.forEach(w => {
+        const contentFn = WIDGET_CONTENT[w.id];
+        if (contentFn) {
+            createWidget(w.id, w.title, contentFn(), { x: w.x, y: w.y, w: w.w, h: w.h });
+        }
+    });
+
+    // Set map layers
+    const showHeatmap = deck.layers.includes('heatmap');
+    const showMarkers = deck.layers.includes('markers');
+
+    const heatmapCheckbox = document.getElementById('show-heatmap');
+    const markersCheckbox = document.getElementById('show-markers');
+    if (heatmapCheckbox) heatmapCheckbox.checked = showHeatmap;
+    if (markersCheckbox) markersCheckbox.checked = showMarkers;
+
+    if (showHeatmap) loadHeatmap();
+    else if (heatLayer) { map.removeLayer(heatLayer); }
+
+    if (showMarkers) loadMarkers();
+    else { markersLayer.clearLayers(); }
+
+    // Animate map view
+    if (deck.mapView) {
+        map.flyTo(deck.mapView.center, deck.mapView.zoom, { duration: 1.5 });
+    }
+
+    // Reload data
+    loadStats();
+    loadLeaderboard();
+    if (typeof loadTypes === 'function') loadTypes();
+}
+
 // === Widget Actions ===
 
 function minimizeWidget(id) {
@@ -780,19 +891,17 @@ async function loadLeaderboard() {
 
 // === Initialize Everything ===
 
-// Create default widgets first
-initDefaultWidgets();
+// Initialize deck selector and load default deck
+initDeckSelector();
+switchDeck('live');
 
-// Then load data into them
+// Then load remaining data
 loadStats().then(() => {
     const total = document.getElementById('stat-total').textContent;
     if (total && total !== '--') {
         document.getElementById('status-text').textContent = `${total} events loaded`;
     }
 });
-loadTypes();
-loadLeaderboard();
-loadHeatmap();
 loadRecentActivity();
 connectSSE();
 

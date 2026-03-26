@@ -75,6 +75,33 @@ body {
 }
 
 .toolbar-center { display: flex; align-items: center; gap: 8px; }
+
+/* Deck selector */
+.deck-selector {
+    display: flex;
+    gap: 4px;
+}
+.deck-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.deck-btn:hover { border-color: var(--primary-dim); color: var(--text-primary); }
+.deck-btn.active {
+    background: rgba(232, 168, 23, 0.1);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.deck-icon { margin-right: 4px; }
 .toolbar-right { display: flex; align-items: center; gap: 16px; }
 
 .connection-badge {
