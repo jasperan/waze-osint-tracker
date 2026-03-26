@@ -986,6 +986,69 @@ def api_privacy_leaderboard():
     return jsonify({"error": "Run 'waze privacy-score --batch' first to compute scores"}), 404
 
 
+@app.route("/api/grid-cells")
+def api_grid_cells():
+    """Return bounding boxes of all configured grid cells."""
+    cells = []
+    for config_file in (
+        "config_europe.yaml",
+        "config_americas.yaml",
+        "config_asia.yaml",
+        "config_oceania.yaml",
+        "config_africa.yaml",
+    ):
+        path = os.path.join(_PROJECT_ROOT, config_file)
+        if os.path.exists(path):
+            with open(path) as f:
+                cfg = yaml.safe_load(f)
+            for cell in cfg.get("grid_cells", []):
+                cells.append(
+                    {
+                        "north": cell["north"],
+                        "south": cell["south"],
+                        "east": cell["east"],
+                        "west": cell["west"],
+                        "priority": cell.get("priority", 3),
+                    }
+                )
+    return jsonify(cells)
+
+
+@app.route("/api/timeline")
+def api_timeline():
+    """Return event counts bucketed by time for timeline visualization."""
+    hours = request.args.get("hours", 24, type=int)
+    buckets_count = request.args.get("buckets", 48, type=int)
+
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(hours=hours)
+    bucket_size = timedelta(hours=hours) / buckets_count
+
+    result = []
+    for i in range(buckets_count):
+        bucket_start = start + bucket_size * i
+        bucket_end = bucket_start + bucket_size
+        count = 0
+        for region, db in get_all_dbs():
+            try:
+                row = db.execute(
+                    "SELECT COUNT(*) as c FROM events WHERE timestamp_utc BETWEEN ? AND ?",
+                    (bucket_start.isoformat(), bucket_end.isoformat()),
+                ).fetchone()
+                if row:
+                    count += row["c"] if isinstance(row, dict) else row[0]
+            except Exception:
+                pass
+        result.append(
+            {
+                "label": bucket_start.strftime("%H:%M"),
+                "count": count,
+                "start": bucket_start.isoformat(),
+            }
+        )
+    return jsonify({"buckets": result, "hours": hours})
+
+
 def _parse_since_to_ms(since_str):
     """Parse '7d' or '24h' into a cutoff timestamp in ms."""
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)

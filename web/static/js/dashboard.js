@@ -225,20 +225,24 @@ function switchDeck(deckKey) {
         }
     });
 
-    // Set map layers
-    const showHeatmap = deck.layers.includes('heatmap');
-    const showMarkers = deck.layers.includes('markers');
+    // Set map layers via layer bar if available
+    if (typeof setMapLayers === 'function') {
+      setMapLayers(deck.layers || []);
+    } else {
+      const showHeatmap = deck.layers.includes('heatmap');
+      const showMarkers = deck.layers.includes('markers');
 
-    const heatmapCheckbox = document.getElementById('show-heatmap');
-    const markersCheckbox = document.getElementById('show-markers');
-    if (heatmapCheckbox) heatmapCheckbox.checked = showHeatmap;
-    if (markersCheckbox) markersCheckbox.checked = showMarkers;
+      const heatmapCheckbox = document.getElementById('show-heatmap');
+      const markersCheckbox = document.getElementById('show-markers');
+      if (heatmapCheckbox) heatmapCheckbox.checked = showHeatmap;
+      if (markersCheckbox) markersCheckbox.checked = showMarkers;
 
-    if (showHeatmap) loadHeatmap();
-    else if (heatLayer) { map.removeLayer(heatLayer); }
+      if (showHeatmap) loadHeatmap();
+      else if (heatLayer) { map.removeLayer(heatLayer); }
 
-    if (showMarkers) loadMarkers();
-    else { markersLayer.clearLayers(); }
+      if (showMarkers) loadMarkers();
+      else { markersLayer.clearLayers(); }
+    }
 
     // Animate map view
     if (deck.mapView) {
@@ -889,10 +893,197 @@ async function loadLeaderboard() {
     }
 }
 
+// === Map Layer Toggle Toolbar ===
+
+const MAP_LAYERS = {
+  heatmap:   { name: 'Heatmap',    icon: '\u2593', active: true,  layer: null },
+  markers:   { name: 'Events',     icon: '\u25CF', active: false, layer: null },
+  police:    { name: 'Police',     icon: '\u{1F6A8}', active: false, layer: null },
+  jams:      { name: 'Jams',       icon: '\u{26A0}', active: false, layer: null },
+  hazards:   { name: 'Hazards',    icon: '\u26A0', active: false, layer: null },
+  accidents: { name: 'Accidents',  icon: '\u2622', active: false, layer: null },
+  grid:      { name: 'Grid Cells', icon: '\u25A2', active: false, layer: null },
+};
+
+function initLayerBar() {
+  const bar = document.getElementById('layer-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  Object.entries(MAP_LAYERS).forEach(([key, cfg]) => {
+    const btn = document.createElement('button');
+    btn.className = 'layer-btn' + (cfg.active ? ' active' : '');
+    btn.dataset.layer = key;
+    btn.innerHTML = `<span class="layer-icon">${cfg.icon}</span>`;
+    btn.title = cfg.name;
+    btn.onclick = () => toggleMapLayer(key);
+    bar.appendChild(btn);
+  });
+}
+
+function toggleMapLayer(key) {
+  const cfg = MAP_LAYERS[key];
+  if (!cfg) return;
+  cfg.active = !cfg.active;
+  document.querySelector(`.layer-btn[data-layer="${key}"]`)
+    ?.classList.toggle('active', cfg.active);
+
+  if (cfg.active) {
+    loadLayerData(key);
+  } else if (cfg.layer) {
+    map.removeLayer(cfg.layer);
+    cfg.layer = null;
+  }
+}
+
+async function loadLayerData(key) {
+  const layerTypeColors = {
+    police: '#3b82f6',
+    jams: '#fbbf24',
+    hazards: '#fb923c',
+    accidents: '#f87171',
+  };
+  const typeMap = {
+    police: 'POLICE',
+    jams: 'JAM',
+    hazards: 'HAZARD',
+    accidents: 'ACCIDENT',
+  };
+
+  switch (key) {
+    case 'heatmap':
+      loadHeatmap();
+      break;
+    case 'markers':
+      loadMarkers();
+      break;
+    case 'police':
+    case 'jams':
+    case 'hazards':
+    case 'accidents':
+      await loadTypedMarkers(key, typeMap[key], layerTypeColors[key]);
+      break;
+    case 'grid':
+      await loadGridOverlay();
+      break;
+  }
+}
+
+async function loadTypedMarkers(layerKey, type, color) {
+  try {
+    const url = buildFilterUrl('/api/events') + `type=${type}&limit=1000&`;
+    const res = await fetch(url);
+    const events = await res.json();
+    if (MAP_LAYERS[layerKey]?.layer) map.removeLayer(MAP_LAYERS[layerKey].layer);
+    const markers = events.map(e =>
+      L.circleMarker([e.latitude, e.longitude], {
+        radius: 5, fillColor: color, color: 'rgba(255,255,255,0.2)',
+        weight: 1, fillOpacity: 0.85,
+      }).bindPopup(`<b>${e.type}</b><br>${e.username}<br>${e.timestamp?.substring(0,19)}`)
+    );
+    MAP_LAYERS[layerKey].layer = L.layerGroup(markers).addTo(map);
+  } catch (err) {
+    console.error(`Failed to load ${layerKey} layer:`, err);
+  }
+}
+
+async function loadGridOverlay() {
+  try {
+    const res = await fetch('/api/grid-cells');
+    const cells = await res.json();
+    if (MAP_LAYERS.grid?.layer) map.removeLayer(MAP_LAYERS.grid.layer);
+    const rects = cells.map(c =>
+      L.rectangle([[c.south, c.west], [c.north, c.east]], {
+        color: 'rgba(232, 168, 23, 0.3)', weight: 1, fillOpacity: 0.03,
+      })
+    );
+    MAP_LAYERS.grid.layer = L.layerGroup(rects).addTo(map);
+  } catch (err) {
+    console.error('Failed to load grid overlay:', err);
+  }
+}
+
+function setMapLayers(layers) {
+  Object.entries(MAP_LAYERS).forEach(([key, cfg]) => {
+    const shouldBeActive = layers.includes(key);
+    if (cfg.active !== shouldBeActive) {
+      toggleMapLayer(key);
+    }
+  });
+}
+
+// === Time Controls ===
+
+function initTimeControls() {
+  const container = document.getElementById('time-controls');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="time-presets">
+      <button class="time-btn active" data-hours="">ALL</button>
+      <button class="time-btn" data-hours="1">1H</button>
+      <button class="time-btn" data-hours="6">6H</button>
+      <button class="time-btn" data-hours="24">24H</button>
+      <button class="time-btn" data-hours="168">7D</button>
+      <button class="time-btn" data-hours="720">30D</button>
+    </div>
+    <div class="time-jump">
+      <input type="datetime-local" id="time-jump-input" title="Jump to date">
+    </div>
+  `;
+  container.querySelectorAll('.time-btn').forEach(btn => {
+    btn.onclick = () => {
+      container.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilters.since = btn.dataset.hours || null;
+      applyFilters();
+    };
+  });
+  document.getElementById('time-jump-input').onchange = (e) => {
+    const dt = new Date(e.target.value);
+    if (!isNaN(dt)) {
+      currentFilters.dateFrom = e.target.value.split('T')[0];
+      currentFilters.since = null;
+      container.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      applyFilters();
+    }
+  };
+}
+
+// === Timeline Sparkline ===
+
+function initTimeline() {
+  const mapLayer = document.querySelector('.map-layer');
+  if (!mapLayer) return;
+  const bar = document.createElement('div');
+  bar.className = 'timeline-bar';
+  bar.id = 'timeline-bar';
+  mapLayer.appendChild(bar);
+  loadTimelineData();
+}
+
+async function loadTimelineData() {
+  try {
+    const res = await fetch('/api/timeline?hours=24&buckets=48');
+    const data = await res.json();
+    const bar = document.getElementById('timeline-bar');
+    if (!bar || !data.buckets) return;
+    const max = Math.max(...data.buckets.map(b => b.count), 1);
+    bar.innerHTML = data.buckets.map(b => {
+      const h = Math.max(2, (b.count / max) * 24);
+      const opacity = 0.3 + (b.count / max) * 0.7;
+      return `<div class="timeline-tick" style="height:${h}px;opacity:${opacity}" title="${b.label}: ${b.count} events"></div>`;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load timeline:', err);
+  }
+}
+
 // === Initialize Everything ===
 
-// Initialize deck selector and load default deck
+// Initialize deck selector, layer bar, time controls, timeline
 initDeckSelector();
+initLayerBar();
+initTimeControls();
+initTimeline();
 switchDeck('live');
 
 // Then load remaining data
@@ -910,6 +1101,9 @@ setInterval(() => {
     loadStats();
     loadLeaderboard();
 }, 60000);
+
+// Refresh timeline every 2 minutes
+setInterval(loadTimelineData, 120000);
 
 // Process pending teleports every 10 seconds
 setInterval(() => {
