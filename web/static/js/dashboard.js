@@ -182,6 +182,31 @@ function switchWidgetTab(widgetId, tabId) {
 
 WIDGET_CONTENT['intel'] = () => ''; // placeholder - content provided by createTabbedWidget
 
+// === New Widget Content (Tasks 10-15) ===
+
+WIDGET_CONTENT['detail-map'] = () => '<div id="detail-map-container" style="width:100%;height:100%;min-height:200px"></div>';
+
+WIDGET_CONTENT['collector'] = () => `
+  <div id="collector-status">
+    <div class="collector-regions" id="collector-regions"></div>
+    <div class="collector-summary" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+      <div class="stat-row"><span class="stat-label">Events/min</span><span class="stat-value" id="coll-rate">--</span></div>
+      <div class="stat-row"><span class="stat-label">Last Scan</span><span class="stat-value" id="coll-last">--</span></div>
+    </div>
+  </div>
+`;
+
+WIDGET_CONTENT['alerts'] = () => '<div class="alerts-feed" id="alerts-feed">Loading alerts...</div>';
+
+WIDGET_CONTENT['type-breakdown'] = () => `
+  <div id="type-breakdown">
+    <div class="type-bar-chart" id="type-bar-chart"></div>
+    <div class="type-list" id="type-list">Loading...</div>
+  </div>
+`;
+
+WIDGET_CONTENT['privacy'] = () => '<div class="privacy-list" id="privacy-list">Loading risk scores...</div>';
+
 function initDefaultWidgets() {
     createWidget('stats', 'Statistics', WIDGET_CONTENT['stats'](), { x: 0, y: 0, w: 3, h: 5 });
     createWidget('leaderboard', 'Top Contributors', WIDGET_CONTENT['leaderboard'](), { x: 0, y: 5, w: 3, h: 7 });
@@ -200,6 +225,8 @@ const DECK_PRESETS = {
             { id: 'stats', title: 'Statistics', x: 0, y: 0, w: 3, h: 5 },
             { id: 'feed', title: 'Live Feed', x: 0, y: 5, w: 3, h: 8 },
             { id: 'display', title: 'Display', x: 9, y: 0, w: 3, h: 4 },
+            { id: 'collector', title: 'Collector Status', x: 9, y: 4, w: 3, h: 5 },
+            { id: 'alerts', title: 'System Alerts', x: 9, y: 9, w: 3, h: 4 },
         ],
         layers: ['heatmap'],
         mapView: { center: [45, 10], zoom: 4 },
@@ -226,8 +253,9 @@ const DECK_PRESETS = {
         widgets: [
             { id: 'stats', title: 'Statistics', x: 0, y: 0, w: 4, h: 5 },
             { id: 'filters', title: 'Filters', x: 8, y: 0, w: 4, h: 5 },
-            { id: 'leaderboard', title: 'Top Contributors', x: 0, y: 5, w: 4, h: 6 },
+            { id: 'type-breakdown', title: 'Event Types', x: 0, y: 5, w: 4, h: 6 },
             { id: 'feed', title: 'Live Feed', x: 8, y: 5, w: 4, h: 6 },
+            { id: 'detail-map', title: 'Detail Map', x: 8, y: 11, w: 4, h: 6 },
         ],
         layers: ['heatmap', 'markers'],
         mapView: { center: [30, 0], zoom: 3 },
@@ -236,8 +264,8 @@ const DECK_PRESETS = {
         name: 'Privacy Risk',
         icon: '\u25B2',
         widgets: [
-            { id: 'stats', title: 'Statistics', x: 0, y: 0, w: 3, h: 5 },
-            { id: 'leaderboard', title: 'Top Contributors', x: 0, y: 5, w: 3, h: 7 },
+            { id: 'privacy', title: 'Privacy Risks', x: 0, y: 0, w: 3, h: 8 },
+            { id: 'stats', title: 'Statistics', x: 0, y: 8, w: 3, h: 5 },
             { id: 'feed', title: 'Live Feed', x: 9, y: 0, w: 3, h: 6 },
         ],
         layers: ['markers'],
@@ -316,6 +344,13 @@ function switchDeck(deckKey) {
     loadStats();
     loadLeaderboard();
     if (typeof loadTypes === 'function') loadTypes();
+
+    // Load data for new widgets
+    if (deck.widgets.some(w => w.id === 'collector')) loadCollectorStatus();
+    if (deck.widgets.some(w => w.id === 'alerts')) loadAlerts();
+    if (deck.widgets.some(w => w.id === 'type-breakdown')) loadTypeBreakdown();
+    if (deck.widgets.some(w => w.id === 'privacy')) loadPrivacyLeaderboard();
+    if (deck.widgets.some(w => w.id === 'detail-map')) initDetailMap();
 }
 
 // === Widget Actions ===
@@ -1074,6 +1109,14 @@ function initLayerBar() {
     btn.onclick = () => toggleMapLayer(key);
     bar.appendChild(btn);
   });
+
+  // 3D Globe toggle
+  const globeBtn = document.createElement('button');
+  globeBtn.className = 'layer-btn globe-toggle';
+  globeBtn.innerHTML = '\u{1F310}';
+  globeBtn.title = 'Toggle 3D Globe';
+  globeBtn.onclick = toggleGlobe;
+  bar.appendChild(globeBtn);
 }
 
 function toggleMapLayer(key) {
@@ -1233,6 +1276,262 @@ async function loadTimelineData() {
   }
 }
 
+// === 3D Globe View (Task 10) ===
+
+let globeInstance = null;
+let globeActive = false;
+
+function toggleGlobe() {
+  globeActive = !globeActive;
+  const mapEl = document.getElementById('map');
+  let globeContainer = document.getElementById('globe-container');
+  document.querySelector('.globe-toggle')?.classList.toggle('active', globeActive);
+
+  if (globeActive) {
+    if (!globeContainer) {
+      globeContainer = document.createElement('div');
+      globeContainer.id = 'globe-container';
+      document.querySelector('.map-layer').appendChild(globeContainer);
+    }
+    mapEl.style.display = 'none';
+    globeContainer.style.display = 'block';
+    initGlobe(globeContainer);
+  } else {
+    mapEl.style.display = 'block';
+    if (globeContainer) globeContainer.style.display = 'none';
+  }
+}
+
+function initGlobe(container) {
+  if (globeInstance) {
+    refreshGlobeData();
+    return;
+  }
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+  camera.position.z = 250;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.innerHTML = '';
+  container.appendChild(renderer.domElement);
+
+  const globe = new ThreeGlobe()
+    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png');
+
+  scene.add(globe);
+  scene.add(new THREE.AmbientLight(0xcccccc, Math.PI));
+  scene.add(new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI));
+
+  let isDragging = false;
+  container.addEventListener('mousedown', () => isDragging = true);
+  container.addEventListener('mouseup', () => isDragging = false);
+
+  function animate() {
+    if (!isDragging) globe.rotation.y += 0.002;
+    renderer.render(scene, camera);
+    if (globeActive) requestAnimationFrame(animate);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+
+  globeInstance = { globe, renderer, scene, camera };
+  refreshGlobeData();
+}
+
+async function refreshGlobeData() {
+  if (!globeInstance) return;
+  try {
+    const res = await fetch('/api/heatmap?limit=2000');
+    const data = await res.json();
+    const points = data.map(d => ({
+      lat: d[0], lng: d[1], size: 0.4, color: '#e8a817'
+    }));
+    globeInstance.globe
+      .pointsData(points)
+      .pointAltitude('size')
+      .pointColor('color')
+      .pointRadius(0.15);
+  } catch (err) {
+    console.error('Failed to load globe data:', err);
+  }
+}
+
+// === Detail Map (Task 11) ===
+
+function initDetailMap() {
+  setTimeout(() => {
+    const container = document.getElementById('detail-map-container');
+    if (!container || container._leafletInit) return;
+    container._leafletInit = true;
+    const detailMap = L.map(container, { zoomControl: true }).setView([40.4, -3.7], 10);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, opacity: 0.8
+    }).addTo(detailMap);
+
+    map.on('click', (e) => {
+      detailMap.setView(e.latlng, 12);
+      loadDetailMarkers(detailMap, e.latlng);
+    });
+
+    setTimeout(() => detailMap.invalidateSize(), 200);
+  }, 300);
+}
+
+async function loadDetailMarkers(detailMap, center) {
+  try {
+    const res = await fetch('/api/events?limit=200');
+    const events = await res.json();
+    detailMap.eachLayer(l => { if (l instanceof L.CircleMarker) detailMap.removeLayer(l); });
+    const nearby = events.filter(e =>
+      Math.abs(e.latitude - center.lat) < 0.2 && Math.abs(e.longitude - center.lng) < 0.2
+    );
+    nearby.forEach(e => {
+      const badge = TYPE_BADGES[e.type] || { color: '#64748b' };
+      L.circleMarker([e.latitude, e.longitude], {
+        radius: 6, fillColor: badge.color, color: '#fff', weight: 1, fillOpacity: 0.9,
+      }).bindPopup(`<b>${e.type}</b><br>${e.username}`).addTo(detailMap);
+    });
+  } catch (err) {
+    console.error('Detail map load failed:', err);
+  }
+}
+
+// === Collector Status (Task 12) ===
+
+async function loadCollectorStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const status = await res.json();
+    const container = document.getElementById('collector-regions');
+    if (!container) return;
+
+    const regions = ['europe', 'americas', 'asia', 'oceania', 'africa'];
+    container.innerHTML = regions.map(r => {
+      const s = status[r] || status;
+      const running = s.running || s.status === 'running' || false;
+      const dotColor = running ? 'var(--accent-green)' : 'var(--accent-red)';
+      const events = s.events_collected || s.total_events || 0;
+      return `<div class="region-status">
+        <span class="region-dot" style="background:${dotColor}"></span>
+        <span class="region-name">${r}</span>
+        <span class="region-count">${events.toLocaleString()}</span>
+      </div>`;
+    }).join('');
+
+    const rateEl = document.getElementById('coll-rate');
+    const lastEl = document.getElementById('coll-last');
+    if (rateEl) rateEl.textContent = (status.events_per_minute || '--');
+    if (lastEl) lastEl.textContent = status.last_scan ? formatTimeAgo(status.last_scan) : '--';
+  } catch (e) { /* silent */ }
+}
+
+// === System Alerts (Task 13) ===
+
+async function loadAlerts() {
+  try {
+    const res = await fetch('/api/alerts');
+    const alerts = await res.json();
+    const feed = document.getElementById('alerts-feed');
+    if (!feed) return;
+
+    const severityColors = {
+      high: { color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
+      medium: { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+      info: { color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' },
+    };
+
+    feed.innerHTML = alerts.length ? alerts.map(a => {
+      const s = severityColors[a.severity] || severityColors.info;
+      return `<div class="alert-item" style="border-left:3px solid ${s.color};background:${s.bg}">
+        <span class="alert-severity" style="color:${s.color}">${a.severity.toUpperCase()}</span>
+        <span class="alert-message">${a.message}</span>
+      </div>`;
+    }).join('') : '<div style="color:var(--text-muted);padding:12px;text-align:center;font-size:0.8rem">No alerts</div>';
+  } catch (e) { /* silent */ }
+}
+
+// === Event Type Breakdown (Task 14) ===
+
+async function loadTypeBreakdown() {
+  try {
+    const res = await fetch('/api/types');
+    const types = await res.json();
+    const list = document.getElementById('type-list');
+    const chart = document.getElementById('type-bar-chart');
+    if (!list || !chart) return;
+
+    const total = types.reduce((s, t) => s + t.count, 0) || 1;
+
+    chart.innerHTML = types.map(t => {
+      const badge = TYPE_BADGES[t.type] || { color: '#64748b' };
+      const pct = (t.count / total * 100).toFixed(1);
+      return `<div class="type-bar-segment" style="width:${pct}%;background:${badge.color}" title="${t.type}: ${pct}%"></div>`;
+    }).join('');
+
+    list.innerHTML = types.map(t => {
+      const badge = TYPE_BADGES[t.type] || { color: '#64748b' };
+      const pct = (t.count / total * 100).toFixed(1);
+      return `<div class="type-row">
+        <span class="type-dot" style="background:${badge.color}"></span>
+        <span class="type-name">${t.type}</span>
+        <span class="type-pct">${pct}%</span>
+        <span class="type-count">${t.count.toLocaleString()}</span>
+      </div>`;
+    }).join('');
+  } catch (e) { /* silent */ }
+}
+
+// === Privacy Risk Leaderboard (Task 15) ===
+
+async function loadPrivacyLeaderboard() {
+  try {
+    const res = await fetch('/api/privacy-score/leaderboard?limit=10');
+    const users = await res.json();
+    const list = document.getElementById('privacy-list');
+    if (!list) return;
+
+    if (users.error) {
+      list.innerHTML = '<div style="color:var(--text-muted);padding:12px;font-size:0.8rem">Privacy scoring unavailable</div>';
+      return;
+    }
+
+    list.innerHTML = users.map((u, i) => {
+      const score = u.overall_score || 0;
+      const level = score >= 70 ? 'critical' : score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
+      const levelColors = {
+        critical: { color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
+        high: { color: '#fb923c', bg: 'rgba(251,146,60,0.1)' },
+        medium: { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)' },
+        low: { color: '#34d399', bg: 'rgba(52,211,153,0.1)' },
+      };
+      const c = levelColors[level];
+      return `<div class="privacy-row">
+        <span class="privacy-rank">${i + 1}</span>
+        <span class="privacy-user">${u.username}</span>
+        <span class="privacy-badge" style="color:${c.color};background:${c.bg}">${level.toUpperCase()}</span>
+        <span class="privacy-score" style="color:${c.color}">${score.toFixed(0)}</span>
+      </div>`;
+    }).join('') || '<div style="color:var(--text-muted);padding:12px;text-align:center;font-size:0.8rem">No data yet</div>';
+  } catch (e) {
+    const list = document.getElementById('privacy-list');
+    if (list) list.innerHTML = '<div style="color:var(--text-muted);padding:12px;font-size:0.8rem">Privacy scoring unavailable</div>';
+  }
+}
+
 // === Initialize Everything ===
 
 // Initialize deck selector, layer bar, time controls, timeline
@@ -1262,6 +1561,11 @@ setInterval(() => {
 
 // Refresh timeline every 2 minutes
 setInterval(loadTimelineData, 120000);
+
+// Refresh new widgets on intervals
+setInterval(loadCollectorStatus, 10000);
+setInterval(loadAlerts, 30000);
+setInterval(loadTypeBreakdown, 60000);
 
 // Process pending teleports every 10 seconds
 setInterval(() => {

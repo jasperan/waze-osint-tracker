@@ -986,6 +986,61 @@ def api_privacy_leaderboard():
     return jsonify({"error": "Run 'waze privacy-score --batch' first to compute scores"}), 404
 
 
+@app.route("/api/alerts")
+def api_alerts():
+    """Generate system alerts from recent data patterns."""
+    alerts = []
+    now = datetime.now(timezone.utc)
+    one_hour_ago = now - timedelta(hours=1)
+
+    for region, db in get_all_dbs():
+        try:
+            row = db.execute(
+                "SELECT COUNT(*) as c FROM events WHERE timestamp_utc > ?",
+                (one_hour_ago.isoformat(),),
+            ).fetchone()
+            count = row["c"] if isinstance(row, dict) else (row[0] if row else 0)
+
+            if count > 100:
+                severity = "high" if count > 500 else "medium"
+                alerts.append(
+                    {
+                        "type": "spike",
+                        "severity": severity,
+                        "message": f"Activity spike in {region}: {count} events in last hour",
+                        "region": region,
+                        "timestamp": now.isoformat(),
+                    }
+                )
+
+            new_users = db.execute(
+                "SELECT COUNT(DISTINCT username) as c FROM events "
+                "WHERE timestamp_utc > ? AND username != 'anonymous'",
+                (one_hour_ago.isoformat(),),
+            ).fetchone()
+            nu_count = (
+                new_users["c"]
+                if isinstance(new_users, dict)
+                else (new_users[0] if new_users else 0)
+            )
+            if nu_count > 20:
+                alerts.append(
+                    {
+                        "type": "users",
+                        "severity": "info",
+                        "message": f"{nu_count} active users in {region} (last hour)",
+                        "region": region,
+                        "timestamp": now.isoformat(),
+                    }
+                )
+        except Exception:
+            pass
+
+    severity_order = {"high": 0, "medium": 1, "info": 2}
+    alerts.sort(key=lambda a: severity_order.get(a["severity"], 3))
+    return jsonify(alerts[:20])
+
+
 @app.route("/api/grid-cells")
 def api_grid_cells():
     """Return bounding boxes of all configured grid cells."""
