@@ -122,10 +122,13 @@ def get_all_dbs():
         config = {}
 
     if config.get("database_type") == "oracle":
-        from database_oracle import Database as OracleDatabase
+        try:
+            from database_oracle import Database as OracleDatabase
 
-        db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
-        return [("all", db)]
+            db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+            return [("all", db)]
+        except Exception:
+            logger.warning("Oracle configured but unavailable, falling back to SQLite")
 
     dbs = []
     for region, path in DB_PATHS.items():
@@ -1059,10 +1062,10 @@ def api_grid_cells():
             for cell in cfg.get("grid_cells", []):
                 cells.append(
                     {
-                        "north": cell["north"],
-                        "south": cell["south"],
-                        "east": cell["east"],
-                        "west": cell["west"],
+                        "north": cell.get("lat_top", cell.get("north")),
+                        "south": cell.get("lat_bottom", cell.get("south")),
+                        "east": cell.get("lon_right", cell.get("east")),
+                        "west": cell.get("lon_left", cell.get("west")),
                         "priority": cell.get("priority", 3),
                     }
                 )
