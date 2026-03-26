@@ -1,3 +1,9 @@
+// === HTML Escape Helper (XSS prevention) ===
+function escapeHTML(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // === GridStack Initialization ===
 const grid = GridStack.init({
     column: 12,
@@ -72,7 +78,7 @@ const WIDGET_CONTENT = {
     'feed': () => `
         <div class="feed-header-bar">
             <span class="live-indicator"><span class="live-dot"></span> LIVE</span>
-            <span id="connection-status">Connecting...</span>
+            <span id="connection-status-feed">Connecting...</span>
         </div>
         <div class="feed-items" id="feed-items"></div>
     `,
@@ -343,6 +349,9 @@ function switchDeck(deckKey) {
     if (deck.widgets.some(w => w.id === 'type-breakdown')) loadTypeBreakdown();
     if (deck.widgets.some(w => w.id === 'privacy')) loadPrivacyLeaderboard();
     if (deck.widgets.some(w => w.id === 'detail-map')) initDetailMap();
+
+    // Re-render Leaflet map after GridStack layout changes
+    setTimeout(() => map.invalidateSize(), 200);
 }
 
 // === Widget Actions ===
@@ -737,8 +746,8 @@ async function searchUsers(query) {
 
             if (users.length > 0) {
                 dropdown.innerHTML = users.map(u =>
-                    `<div class="user-option" onclick="selectUser('${u.username.replace(/'/g, "\\'")}')">
-                        <span>${u.username}</span>
+                    `<div class="user-option" onclick="selectUser('${escapeHTML(u.username).replace(/'/g, "\\'")}')">
+                        <span>${escapeHTML(u.username)}</span>
                         <span class="count">${u.count} events</span>
                     </div>`
                 ).join('');
@@ -770,7 +779,7 @@ function selectUser(username) {
 
     applyFilters();
 
-    document.getElementById('status-text').textContent = `Tracking user: ${username}`;
+    document.getElementById('status-text').textContent = 'Tracking user: ' + username;
 }
 
 function clearUserFilter() {
@@ -861,11 +870,11 @@ async function loadMarkers() {
 
             marker.bindPopup(`
                 <div class="event-popup">
-                    <h4>${event.type}</h4>
-                    <div class="detail"><strong>User:</strong> ${event.username}</div>
+                    <h4>${escapeHTML(event.type)}</h4>
+                    <div class="detail"><strong>User:</strong> ${escapeHTML(event.username)}</div>
                     <div class="detail"><strong>Time:</strong> ${event.timestamp.substring(0, 19)}</div>
                     <div class="detail"><strong>Location:</strong> ${event.latitude.toFixed(4)}, ${event.longitude.toFixed(4)}</div>
-                    ${event.subtype ? `<div class="detail"><strong>Subtype:</strong> ${event.subtype}</div>` : ''}
+                    ${event.subtype ? `<div class="detail"><strong>Subtype:</strong> ${escapeHTML(event.subtype)}</div>` : ''}
                 </div>
             `);
 
@@ -911,7 +920,7 @@ function addFeedItem(data) {
         item.className = 'feed-item' + (isNew ? ' feed-item-new' : '');
         item.innerHTML = `
             <span class="feed-badge" style="color:${badge.color};background:${badge.bg};border:1px solid ${badge.color}33">${badge.label}</span>
-            <span class="feed-user">${e.username || 'anonymous'}</span>
+            <span class="feed-user">${escapeHTML(e.username) || 'anonymous'}</span>
             <span class="feed-location">${(e.latitude || 0).toFixed(2)}, ${(e.longitude || 0).toFixed(2)}</span>
             <span class="feed-time">${formatTimeAgo(e.timestamp)}</span>
         `;
@@ -996,14 +1005,20 @@ function addFeedItem(data) {
     }
 }
 
+function setConnectionStatus(text) {
+    const toolbar = document.getElementById('connection-status');
+    const feed = document.getElementById('connection-status-feed');
+    if (toolbar) toolbar.textContent = text;
+    if (feed) feed.textContent = text;
+}
+
 function connectSSE() {
-    const statusEl = document.getElementById('connection-status');
-    statusEl.textContent = 'Connecting...';
+    setConnectionStatus('Connecting...');
 
     const eventSource = new EventSource('/api/stream');
 
     eventSource.onopen = () => {
-        statusEl.textContent = 'Connected';
+        setConnectionStatus('Connected');
     };
 
     eventSource.onmessage = (event) => {
@@ -1011,7 +1026,7 @@ function connectSSE() {
             const data = JSON.parse(event.data);
 
             if (data.type === 'connected') {
-                statusEl.textContent = 'Live';
+                setConnectionStatus('Live');
             } else if (data.type === 'heartbeat') {
                 // Ignore heartbeats
             } else if (data.type === 'new_event') {
@@ -1026,7 +1041,7 @@ function connectSSE() {
     };
 
     eventSource.onerror = () => {
-        statusEl.textContent = 'Reconnecting...';
+        setConnectionStatus('Reconnecting...');
         eventSource.close();
         setTimeout(connectSSE, 5000);
     };
@@ -1064,9 +1079,9 @@ async function loadLeaderboard() {
             else if (user.rank === 3) rankClass = 'bronze';
 
             return `
-                <div class="leaderboard-item" onclick="selectUser('${user.username.replace(/'/g, "\\'")}')">
+                <div class="leaderboard-item" onclick="selectUser('${escapeHTML(user.username).replace(/'/g, "\\'")}')">
                     <span class="leaderboard-rank ${rankClass}">${user.rank}</span>
-                    <span class="leaderboard-username">${user.username}</span>
+                    <span class="leaderboard-username">${escapeHTML(user.username)}</span>
                     <span class="leaderboard-count">${user.count.toLocaleString()}</span>
                 </div>
             `;
@@ -1169,7 +1184,7 @@ async function loadTypedMarkers(layerKey, type, color) {
       L.circleMarker([e.latitude, e.longitude], {
         radius: 5, fillColor: color, color: 'rgba(255,255,255,0.2)',
         weight: 1, fillOpacity: 0.85,
-      }).bindPopup(`<b>${e.type}</b><br>${e.username}<br>${e.timestamp?.substring(0,19)}`)
+      }).bindPopup(`<b>${escapeHTML(e.type)}</b><br>${escapeHTML(e.username)}<br>${e.timestamp?.substring(0,19)}`)
     );
     MAP_LAYERS[layerKey].layer = L.layerGroup(markers).addTo(map);
   } catch (err) {
@@ -1395,7 +1410,7 @@ async function loadDetailMarkers(detailMap, center) {
       const badge = TYPE_BADGES[e.type] || { color: '#64748b' };
       L.circleMarker([e.latitude, e.longitude], {
         radius: 6, fillColor: badge.color, color: '#fff', weight: 1, fillOpacity: 0.9,
-      }).bindPopup(`<b>${e.type}</b><br>${e.username}`).addTo(detailMap);
+      }).bindPopup(`<b>${escapeHTML(e.type)}</b><br>${escapeHTML(e.username)}`).addTo(detailMap);
     });
   } catch (err) {
     console.error('Detail map load failed:', err);
@@ -1513,7 +1528,7 @@ async function loadPrivacyLeaderboard() {
       const c = levelColors[level];
       return `<div class="privacy-row">
         <span class="privacy-rank">${i + 1}</span>
-        <span class="privacy-user">${u.username}</span>
+        <span class="privacy-user">${escapeHTML(u.username)}</span>
         <span class="privacy-badge" style="color:${c.color};background:${c.bg}">${level.toUpperCase()}</span>
         <span class="privacy-score" style="color:${c.color}">${score.toFixed(0)}</span>
       </div>`;
@@ -1588,22 +1603,26 @@ document.addEventListener('keydown', (e) => {
     }
 
     switch(e.key.toLowerCase()) {
-        case 'h':
+        case 'h': {
             const heatmapCheckbox = document.getElementById('show-heatmap');
             if (heatmapCheckbox) { heatmapCheckbox.checked = !heatmapCheckbox.checked; toggleHeatmap(); }
             break;
-        case 'm':
+        }
+        case 'm': {
             const markersCheckbox = document.getElementById('show-markers');
             if (markersCheckbox) { markersCheckbox.checked = !markersCheckbox.checked; toggleMarkers(); }
             break;
-        case 'f':
+        }
+        case 'f': {
             const followCheckbox = document.getElementById('auto-follow');
             if (followCheckbox) followCheckbox.checked = !followCheckbox.checked;
             break;
-        case 's':
+        }
+        case 's': {
             const soundCheckbox = document.getElementById('sound-enabled');
             if (soundCheckbox) soundCheckbox.checked = !soundCheckbox.checked;
             break;
+        }
         case 'r':
             resetFilters();
             break;
