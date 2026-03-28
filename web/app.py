@@ -1107,6 +1107,282 @@ def api_timeline():
     return jsonify({"buckets": result, "hours": hours})
 
 
+# ---------------------------------------------------------------------------
+# Social Graph endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/social-graph")
+def api_social_graph():
+    """Build and return the full social graph."""
+    from social_graph import build_social_graph, detect_communities
+
+    min_co = request.args.get("min_cooccurrences", 3, type=int)
+    limit = min(request.args.get("limit", 5000, type=int), 10000)
+
+    all_events = []
+    for region, db in get_all_dbs():
+        try:
+            rows = db.execute(
+                "SELECT username, latitude, longitude, timestamp_ms, report_type "
+                "FROM events ORDER BY timestamp_ms DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            all_events.extend(dict(r) for r in rows)
+        except Exception as e:
+            logger.warning("Social graph query error for %s: %s", region, e)
+
+    graph = build_social_graph(all_events, min_cooccurrences=min_co)
+    communities = detect_communities(graph)
+    for node in graph["nodes"]:
+        node["community"] = communities.get(node["id"], 0)
+
+    return jsonify(graph)
+
+
+@app.route("/api/social-graph/<username>")
+def api_social_graph_user(username):
+    """Build and return ego network for a specific user."""
+    from social_graph import build_social_graph, detect_communities, get_ego_network
+
+    depth = request.args.get("depth", 2, type=int)
+    min_co = request.args.get("min_cooccurrences", 3, type=int)
+    limit = min(request.args.get("limit", 5000, type=int), 10000)
+
+    all_events = []
+    for region, db in get_all_dbs():
+        try:
+            rows = db.execute(
+                "SELECT username, latitude, longitude, timestamp_ms, report_type "
+                "FROM events ORDER BY timestamp_ms DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            all_events.extend(dict(r) for r in rows)
+        except Exception as e:
+            logger.warning("Ego network query error for %s: %s", region, e)
+
+    graph = build_social_graph(all_events, min_cooccurrences=min_co)
+    ego = get_ego_network(graph, username, depth=depth)
+    communities = detect_communities(graph)
+    for node in ego["nodes"]:
+        node["community"] = communities.get(node["id"], 0)
+
+    return jsonify(ego)
+
+
+# ---------------------------------------------------------------------------
+# Encounter Prediction endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/encounters/<user_a>/<user_b>")
+def api_encounters(user_a, user_b):
+    """Predict encounter times/locations between two users."""
+    from encounter_prediction import predict_encounters
+
+    limit = min(request.args.get("limit", 5000, type=int), 10000)
+
+    events_a = []
+    events_b = []
+    for region, db in get_all_dbs():
+        try:
+            for username, bucket in [(user_a, events_a), (user_b, events_b)]:
+                rows = db.execute(
+                    "SELECT username, latitude, longitude, timestamp_ms, report_type "
+                    "FROM events WHERE username = ? ORDER BY timestamp_ms DESC LIMIT ?",
+                    (username, limit),
+                ).fetchall()
+                bucket.extend(dict(r) for r in rows)
+        except Exception as e:
+            logger.warning("Encounter query error for %s: %s", region, e)
+
+    encounters = predict_encounters(events_a, events_b)
+    return jsonify(encounters)
+
+
+@app.route("/api/encounters/hotspots")
+def api_encounter_hotspots():
+    """Find top predicted encounter hotspots across all users."""
+    from encounter_prediction import find_hotspot_encounters
+
+    top_n = min(request.args.get("top_n", 20, type=int), 100)
+    limit_per_user = min(request.args.get("limit", 1000, type=int), 5000)
+
+    user_events = {}
+    for region, db in get_all_dbs():
+        try:
+            rows = db.execute(
+                "SELECT username, latitude, longitude, timestamp_ms, report_type "
+                "FROM events ORDER BY timestamp_ms DESC LIMIT ?",
+                (limit_per_user * 10,),
+            ).fetchall()
+            for row in rows:
+                r = dict(row)
+                user_events.setdefault(r["username"], []).append(r)
+        except Exception as e:
+            logger.warning("Hotspot query error for %s: %s", region, e)
+
+    hotspots = find_hotspot_encounters(user_events, top_n=top_n)
+    return jsonify(hotspots)
+
+
+# ---------------------------------------------------------------------------
+# OSINT Report endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/report/<username>")
+def api_report(username):
+    """Generate OSINT report for a user."""
+    from report_generator import generate_user_report, render_report_html
+
+    fmt = request.args.get("format", "html")
+    db = get_db()
+    report = generate_user_report(username, db)
+
+    if fmt == "json":
+        return jsonify(report)
+
+    html = render_report_html(report)
+    return Response(html, mimetype="text/html")
+
+
+# ---------------------------------------------------------------------------
+# Geofence endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/geofences", methods=["GET"])
+def api_list_geofences():
+    """List all geofences."""
+    from geofence import GeofenceManager
+
+    db = get_db()
+    mgr = GeofenceManager(db)
+    fences = mgr.list_geofences()
+    return jsonify(
+        [
+            {
+                "geofence_id": gf.geofence_id,
+                "name": gf.name,
+                "geometry_type": gf.geometry_type,
+                "center_lat": gf.center_lat,
+                "center_lon": gf.center_lon,
+                "radius_m": gf.radius_m,
+                "polygon": gf.polygon,
+                "tracked_users": gf.tracked_users,
+                "created_at": gf.created_at,
+            }
+            for gf in fences
+        ]
+    )
+
+
+@app.route("/api/geofences", methods=["POST"])
+def api_create_geofence():
+    """Create a new geofence."""
+    from geofence import GeofenceManager
+
+    data = request.get_json()
+    if not data or "name" not in data or "geometry_type" not in data:
+        return jsonify({"error": "name and geometry_type required"}), 400
+
+    db = get_db()
+    mgr = GeofenceManager(db)
+    gf = mgr.create_geofence(
+        name=data["name"],
+        geometry_type=data["geometry_type"],
+        center_lat=data.get("center_lat", 0),
+        center_lon=data.get("center_lon", 0),
+        radius_m=data.get("radius_m", 0),
+        polygon=[tuple(p) for p in data.get("polygon", [])],
+        tracked_users=data.get("tracked_users", []),
+    )
+    return jsonify(
+        {
+            "geofence_id": gf.geofence_id,
+            "name": gf.name,
+            "geometry_type": gf.geometry_type,
+            "created_at": gf.created_at,
+        }
+    ), 201
+
+
+@app.route("/api/geofences/<geofence_id>", methods=["DELETE"])
+def api_delete_geofence(geofence_id):
+    """Delete a geofence."""
+    from geofence import GeofenceManager
+
+    db = get_db()
+    mgr = GeofenceManager(db)
+    mgr.delete_geofence(geofence_id)
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/api/geofence-alerts")
+def api_geofence_alerts():
+    """Get recent geofence alerts."""
+    from geofence import GeofenceManager
+
+    db = get_db()
+    mgr = GeofenceManager(db)
+    limit = min(request.args.get("limit", 50, type=int), 500)
+    alerts = mgr.get_alert_history(limit=limit)
+    return jsonify(alerts)
+
+
+# ---------------------------------------------------------------------------
+# Temporal Fingerprint endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/fingerprint/<username>")
+def api_fingerprint(username):
+    """Get 168-bin temporal fingerprint for a user."""
+    from temporal_fingerprint import build_fingerprint
+
+    limit = min(request.args.get("limit", 5000, type=int), 10000)
+    all_events = []
+    for region, db in get_all_dbs():
+        try:
+            rows = db.execute(
+                "SELECT timestamp_ms FROM events WHERE username = ? LIMIT ?",
+                (username, limit),
+            ).fetchall()
+            all_events.extend(dict(r) for r in rows)
+        except Exception as e:
+            logger.warning("Fingerprint query error for %s: %s", region, e)
+
+    fp = build_fingerprint(all_events)
+    return jsonify({"username": username, "fingerprint": fp})
+
+
+@app.route("/api/fingerprint/<username>/matches")
+def api_fingerprint_matches(username):
+    """Find users with similar weekly rhythm to the given user."""
+    from temporal_fingerprint import build_fingerprint, find_rhythm_matches
+
+    threshold = request.args.get("threshold", 0.85, type=float)
+    limit = min(request.args.get("limit", 2000, type=int), 10000)
+
+    user_events = {}
+    for region, db in get_all_dbs():
+        try:
+            rows = db.execute(
+                "SELECT username, timestamp_ms FROM events ORDER BY timestamp_ms DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            for row in rows:
+                r = dict(row)
+                user_events.setdefault(r["username"], []).append(r)
+        except Exception as e:
+            logger.warning("Fingerprint matches error for %s: %s", region, e)
+
+    all_fps = {u: build_fingerprint(evts) for u, evts in user_events.items()}
+    matches = find_rhythm_matches(username, all_fps, threshold=threshold)
+    return jsonify(matches)
+
+
 def _parse_since_to_ms(since_str):
     """Parse '7d' or '24h' into a cutoff timestamp in ms."""
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)

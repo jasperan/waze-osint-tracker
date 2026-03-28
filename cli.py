@@ -1622,6 +1622,37 @@ def export(fmt, output):
     db.close()
 
 
+# === Report Command ===
+
+
+@cli.command()
+@click.argument("username")
+@click.option("--format", "fmt", type=click.Choice(["html", "json"]), default="html")
+@click.option("-o", "--output", type=click.Path(), default=None, help="Output file path")
+def report(username, fmt, output):
+    """Generate an OSINT intelligence report for a user."""
+    from report_generator import generate_user_report, render_report_html
+
+    db = get_db()
+    report_data = generate_user_report(username, db)
+
+    if fmt == "json":
+        import json
+
+        content = json.dumps(report_data, indent=2)
+    else:
+        content = render_report_html(report_data)
+
+    if output:
+        os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
+        with open(output, "w") as f:
+            f.write(content)
+        click.echo(f"Report saved to {output}")
+    else:
+        click.echo(content)
+    db.close()
+
+
 # === Config Commands ===
 
 
