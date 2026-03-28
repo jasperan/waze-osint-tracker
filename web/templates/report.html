@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSINT Report: {{ report.username }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    line-height: 1.6;
+    padding: 2rem;
+  }
+  a { color: #3b82f6; }
+  .container { max-width: 960px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    border-bottom: 2px solid #e8a817;
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+  }
+  .header h1 { color: #e8a817; font-size: 1.8rem; }
+  .header .meta { color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem; }
+
+  /* Stat grid */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 1.2rem;
+    text-align: center;
+  }
+  .stat-card .value { font-size: 2rem; font-weight: 700; color: #e8a817; }
+  .stat-card .label { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Sections */
+  .section { margin-bottom: 2rem; }
+  .section h2 {
+    color: #3b82f6;
+    font-size: 1.2rem;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  /* Risk bars */
+  .risk-row { display: flex; align-items: center; margin-bottom: 0.6rem; }
+  .risk-label { width: 200px; font-size: 0.85rem; color: #cbd5e1; }
+  .risk-bar-bg {
+    flex: 1;
+    height: 12px;
+    background: #1e293b;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-right: 0.75rem;
+  }
+  .risk-bar {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.4s;
+  }
+  .risk-val { width: 50px; text-align: right; font-size: 0.85rem; font-weight: 600; }
+  .risk-low { background: #22c55e; }
+  .risk-med { background: #eab308; }
+  .risk-high { background: #ef4444; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #1e293b; }
+  th { color: #e8a817; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; background: #1e293b; }
+  td { font-size: 0.85rem; }
+  tr:hover td { background: #1e293b; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>OSINT Report: {{ report.username }}</h1>
+    <div class="meta">Generated {{ report.generated_at }} | {{ report.total_events }} events</div>
+  </div>
+
+  <!-- Stat grid -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="value">{{ report.total_events }}</div>
+      <div class="label">Total Events</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">{{ report.active_days }}</div>
+      <div class="label">Active Days</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">{{ report.area_km2 }}</div>
+      <div class="label">Area (km&sup2;)</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">{{ report.risk_assessment.overall }}</div>
+      <div class="label">Risk Score</div>
+    </div>
+  </div>
+
+  <!-- Risk Assessment -->
+  <div class="section">
+    <h2>Risk Assessment</h2>
+    {% set risks = [
+      ("Overall", report.risk_assessment.overall),
+      ("Schedule Predictability", report.risk_assessment.schedule_predictability),
+      ("Location Concentration", report.risk_assessment.location_concentration),
+      ("Trackability", report.risk_assessment.trackability),
+    ] %}
+    {% for label, val in risks %}
+    <div class="risk-row">
+      <span class="risk-label">{{ label }}</span>
+      <div class="risk-bar-bg">
+        <div class="risk-bar {% if val < 33 %}risk-low{% elif val < 66 %}risk-med{% else %}risk-high{% endif %}"
+             style="width: {{ val }}%"></div>
+      </div>
+      <span class="risk-val">{{ val }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Event Types -->
+  {% if report.event_types %}
+  <div class="section">
+    <h2>Event Types</h2>
+    <table>
+      <thead><tr><th>Type</th><th>Count</th><th>%</th></tr></thead>
+      <tbody>
+        {% for et in report.event_types %}
+        <tr>
+          <td>{{ et.type }}</td>
+          <td>{{ et.count }}</td>
+          <td>{{ et.pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Location Clusters -->
+  {% if report.locations %}
+  <div class="section">
+    <h2>Location Clusters</h2>
+    <table>
+      <thead><tr><th>Lat</th><th>Lon</th><th>Events</th><th>Label</th></tr></thead>
+      <tbody>
+        {% for loc in report.locations %}
+        <tr>
+          <td>{{ loc.lat }}</td>
+          <td>{{ loc.lon }}</td>
+          <td>{{ loc.count }}</td>
+          <td>{{ loc.label }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Activity Timeline -->
+  {% if report.timeline %}
+  <div class="section">
+    <h2>Activity Timeline</h2>
+    <table>
+      <thead><tr><th>Timestamp</th><th>Type</th><th>Lat</th><th>Lon</th></tr></thead>
+      <tbody>
+        {% for ev in report.timeline %}
+        <tr>
+          <td>{{ ev.timestamp }}</td>
+          <td>{{ ev.type }}</td>
+          <td>{{ ev.lat }}</td>
+          <td>{{ ev.lon }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+</body>
+</html>
