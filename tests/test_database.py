@@ -18,6 +18,7 @@ def test_database_creates_tables():
         assert "collection_runs" in table_names
         db.close()
 
+
 def test_insert_event_and_deduplicate():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
@@ -34,16 +35,16 @@ def test_insert_event_and_deduplicate():
             "subtype": "visible",
             "raw_json": "{}",
             "collected_at": "2026-01-24T10:01:00Z",
-            "grid_cell": "test_cell"
+            "grid_cell": "test_cell",
         }
 
         # First insert should succeed
         inserted = db.insert_event(event)
-        assert inserted == True
+        assert inserted
 
         # Duplicate should be rejected
         inserted = db.insert_event(event)
-        assert inserted == False
+        assert not inserted
 
         # Count should be 1
         count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]

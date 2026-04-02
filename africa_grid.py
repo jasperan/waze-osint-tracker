@@ -111,15 +111,17 @@ def generate_city_grids(cell_size: float = 0.08) -> List[GridCell]:
                 elif lon_offset == 1:
                     suffix += "_e"
 
-                cells.append(GridCell(
-                    name=f"{city['name']}{suffix}",
-                    lat_top=round(lat_top, 4),
-                    lat_bottom=round(lat_bottom, 4),
-                    lon_left=round(lon_left, 4),
-                    lon_right=round(lon_right, 4),
-                    country=city["country"],
-                    priority=1
-                ))
+                cells.append(
+                    GridCell(
+                        name=f"{city['name']}{suffix}",
+                        lat_top=round(lat_top, 4),
+                        lat_bottom=round(lat_bottom, 4),
+                        lon_left=round(lon_left, 4),
+                        lon_right=round(lon_right, 4),
+                        country=city["country"],
+                        priority=1,
+                    )
+                )
 
     return cells
 
@@ -147,16 +149,20 @@ def generate_africa_coverage_grids(cell_size: float = 2.0) -> List[GridCell]:
         while lat < region["lat_n"]:
             lon = region["lon_w"]
             while lon < region["lon_e"]:
-                name = f"af_{region['name'][:2]}_{int(abs(lat))}{'s' if lat < 0 else 'n'}_{int(abs(lon))}{'w' if lon < 0 else 'e'}"
-                cells.append(GridCell(
-                    name=name,
-                    lat_top=round(lat + cell_size, 2),
-                    lat_bottom=round(lat, 2),
-                    lon_left=round(lon, 2),
-                    lon_right=round(lon + cell_size, 2),
-                    country=region["name"].upper()[:2],
-                    priority=3
-                ))
+                lat_dir = "s" if lat < 0 else "n"
+                lon_dir = "w" if lon < 0 else "e"
+                name = f"af_{region['name'][:2]}_{int(abs(lat))}{lat_dir}_{int(abs(lon))}{lon_dir}"
+                cells.append(
+                    GridCell(
+                        name=name,
+                        lat_top=round(lat + cell_size, 2),
+                        lat_bottom=round(lat, 2),
+                        lon_left=round(lon, 2),
+                        lon_right=round(lon + cell_size, 2),
+                        country=region["name"].upper()[:2],
+                        priority=3,
+                    )
+                )
                 lon += cell_size
             lat += cell_size
 
@@ -173,8 +179,7 @@ def get_all_africa_cells(include_coarse: bool = True) -> List[GridCell]:
         city_centers = {(c["lat"], c["lon"]) for c in AFRICA_CITIES}
         for cell in coarse_cells:
             has_city = any(
-                cell.lat_bottom <= clat <= cell.lat_top and
-                cell.lon_left <= clon <= cell.lon_right
+                cell.lat_bottom <= clat <= cell.lat_top and cell.lon_left <= clon <= cell.lon_right
                 for clat, clon in city_centers
             )
             if not has_city:
@@ -195,7 +200,7 @@ def save_africa_config(output_path: str = "config_africa.yaml"):
         "waze_server_url": "http://localhost:8080",
         "database_path": "./data/waze_africa.db",
         "collection_mode": "africa",
-        "grid_cells": [c.to_dict() for c in cells]
+        "grid_cells": [c.to_dict() for c in cells],
     }
 
     with open(output_path, "w") as f:

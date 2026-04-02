@@ -4,6 +4,8 @@ from pathlib import Path
 
 
 class Database:
+    db_type = "sqlite"
+
     def __init__(self, db_path: str, check_same_thread: bool = True):
         self.db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -76,13 +78,16 @@ class Database:
     def upsert_tracked_user(self, username: str, timestamp: str) -> bool:
         """Track a user, updating last_seen and event_count if exists."""
         try:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT INTO tracked_users (username, first_seen, last_seen, event_count)
                 VALUES (?, ?, ?, 1)
                 ON CONFLICT(username) DO UPDATE SET
                     last_seen = excluded.last_seen,
                     event_count = event_count + 1
-            """, (username, timestamp, timestamp))
+            """,
+                (username, timestamp, timestamp),
+            )
             self.conn.commit()
             return True
         except Exception:
@@ -90,20 +95,32 @@ class Database:
 
     def get_tracked_users(self, limit: int = 100):
         """Get tracked users ordered by event count."""
-        return self.conn.execute("""
+        return self.conn.execute(
+            """
             SELECT * FROM tracked_users
             ORDER BY event_count DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
 
-    def update_daily_stats(self, date: str, events: int = 0, users: int = 0,
-                           requests: int = 0, errors: int = 0, cells: int = 0,
-                           by_type: dict = None):
+    def update_daily_stats(
+        self,
+        date: str,
+        events: int = 0,
+        users: int = 0,
+        requests: int = 0,
+        errors: int = 0,
+        cells: int = 0,
+        by_type: dict = None,
+    ):
         """Update daily collection statistics."""
         import json
+
         by_type_json = json.dumps(by_type) if by_type else None
 
-        self.conn.execute("""
+        self.conn.execute(
+            """
             INSERT INTO daily_stats (date, events_collected, unique_users,
                                      api_requests, api_errors, grid_cells_scanned, by_type_json)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -114,16 +131,21 @@ class Database:
                 api_errors = api_errors + excluded.api_errors,
                 grid_cells_scanned = grid_cells_scanned + excluded.grid_cells_scanned,
                 by_type_json = excluded.by_type_json
-        """, (date, events, users, requests, errors, cells, by_type_json))
+        """,
+            (date, events, users, requests, errors, cells, by_type_json),
+        )
         self.conn.commit()
 
     def get_daily_stats(self, days: int = 30):
         """Get daily stats for the last N days."""
-        return self.conn.execute("""
+        return self.conn.execute(
+            """
             SELECT * FROM daily_stats
             ORDER BY date DESC
             LIMIT ?
-        """, (days,)).fetchall()
+        """,
+            (days,),
+        ).fetchall()
 
     def get_collection_summary(self):
         """Get overall collection summary."""
@@ -151,25 +173,28 @@ class Database:
     def insert_event(self, event: dict) -> bool:
         """Insert event, return True if inserted, False if duplicate."""
         try:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT INTO events (
                     event_hash, username, latitude, longitude,
                     timestamp_utc, timestamp_ms, report_type, subtype,
                     raw_json, collected_at, grid_cell
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                event["event_hash"],
-                event["username"],
-                event["latitude"],
-                event["longitude"],
-                event["timestamp_utc"],
-                event["timestamp_ms"],
-                event["report_type"],
-                event.get("subtype"),
-                event.get("raw_json"),
-                event["collected_at"],
-                event["grid_cell"]
-            ))
+            """,
+                (
+                    event["event_hash"],
+                    event["username"],
+                    event["latitude"],
+                    event["longitude"],
+                    event["timestamp_utc"],
+                    event["timestamp_ms"],
+                    event["report_type"],
+                    event.get("subtype"),
+                    event.get("raw_json"),
+                    event["collected_at"],
+                    event["grid_cell"],
+                ),
+            )
             self.conn.commit()
             return True
         except sqlite3.IntegrityError:

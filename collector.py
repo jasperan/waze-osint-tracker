@@ -132,11 +132,11 @@ class Collector:
 
     def run(self):
         """Main collection loop."""
-        from database import Database
+        from database_factory import get_database
         from grid import load_grid_cells
         from waze_client import WazeClient
 
-        db = Database(self.config["database_path"])
+        db = get_database(self.config)
         client = WazeClient(self.config["waze_server_url"])
         cells = load_grid_cells(self.config)
         interval = self.config.get("polling_interval_seconds", 300)

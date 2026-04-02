@@ -79,9 +79,14 @@ def get_db(region=None):
     """
     config = load_config()
     if config.get("database_type") == "oracle":
-        from database_oracle import Database as OracleDatabase
+        try:
+            from database_oracle import Database as OracleDatabase
 
-        return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+            return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+        except Exception:
+            if not config.get("sqlite_fallback", False):
+                raise
+            click.echo("Oracle unavailable, falling back to SQLite", err=True)
 
     from database import Database
 
@@ -100,10 +105,15 @@ def get_all_dbs():
     """
     config = load_config()
     if config.get("database_type") == "oracle":
-        from database_oracle import Database as OracleDatabase
+        try:
+            from database_oracle import Database as OracleDatabase
 
-        db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
-        return [("all", db)]
+            db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+            return [("all", db)]
+        except Exception:
+            if not config.get("sqlite_fallback", False):
+                raise
+            click.echo("Oracle unavailable, falling back to SQLite", err=True)
 
     from database import Database
 

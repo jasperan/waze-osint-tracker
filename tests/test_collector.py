@@ -8,16 +8,17 @@ def test_generate_event_hash_consistent():
         latitude=40.42,
         longitude=-3.70,
         timestamp_ms=1737709200000,
-        report_type="police"
+        report_type="police",
     )
     hash2 = generate_event_hash(
         username="testuser",
         latitude=40.42,
         longitude=-3.70,
         timestamp_ms=1737709200000,
-        report_type="police"
+        report_type="police",
     )
     assert hash1 == hash2
+
 
 def test_generate_event_hash_different_for_different_input():
     hash1 = generate_event_hash(
@@ -25,16 +26,17 @@ def test_generate_event_hash_different_for_different_input():
         latitude=40.42,
         longitude=-3.70,
         timestamp_ms=1737709200000,
-        report_type="police"
+        report_type="police",
     )
     hash2 = generate_event_hash(
         username="otheruser",
         latitude=40.42,
         longitude=-3.70,
         timestamp_ms=1737709200000,
-        report_type="police"
+        report_type="police",
     )
     assert hash1 != hash2
+
 
 def test_process_alert_extracts_fields():
     alert = {
@@ -44,7 +46,7 @@ def test_process_alert_extracts_fields():
         "longitude": -3.70,
         "country": "ES",
         "reportBy": "testuser123",
-        "pubMillis": 1737709200000
+        "pubMillis": 1737709200000,
     }
 
     event = process_alert(alert, grid_cell="test_cell")
@@ -60,13 +62,9 @@ def test_process_alert_extracts_fields():
     assert "timestamp_utc" in event
     assert "raw_json" in event
 
+
 def test_process_alert_handles_missing_username():
-    alert = {
-        "type": "JAM",
-        "latitude": 40.42,
-        "longitude": -3.70,
-        "pubMillis": 1737709200000
-    }
+    alert = {"type": "JAM", "latitude": 40.42, "longitude": -3.70, "pubMillis": 1737709200000}
 
     event = process_alert(alert, grid_cell="test_cell")
 

@@ -166,14 +166,14 @@ class EuropeCollector:
 
     def run(self):
         """Main autonomous collection loop."""
-        from database import Database
+        from database_factory import get_database
         from waze_client import WazeClient
 
         # Ensure database directory exists
         db_path = self.config["database_path"]
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        db = Database(db_path)
+        db = get_database(self.config)
         client = WazeClient(self.config.get("waze_server_url"))
 
         # Load cells by priority

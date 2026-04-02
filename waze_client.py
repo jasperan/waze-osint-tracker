@@ -9,7 +9,12 @@ import requests
 class RateLimiter:
     """Simple rate limiter with exponential backoff."""
 
-    def __init__(self, min_delay: float = 1.0, max_delay: float = 10.0, backoff_factor: float = 2.0):
+    def __init__(
+        self,
+        min_delay: float = 1.0,
+        max_delay: float = 10.0,
+        backoff_factor: float = 2.0,
+    ):
         self.min_delay = min_delay
         self.max_delay = max_delay
         self.backoff_factor = backoff_factor
@@ -36,8 +41,7 @@ class RateLimiter:
         """Call after failed request to increase backoff."""
         self.consecutive_errors += 1
         self.current_delay = min(
-            self.max_delay,
-            self.min_delay * (self.backoff_factor ** self.consecutive_errors)
+            self.max_delay, self.min_delay * (self.backoff_factor**self.consecutive_errors)
         )
 
 
@@ -58,12 +62,18 @@ class WazeClient:
         self.timeout = timeout
         self.rate_limiter = RateLimiter(min_delay=1.5, max_delay=30.0)
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://www.waze.com/live-map",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.waze.com/live-map",
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+            }
+        )
 
     def get_traffic_notifications(
         self,
@@ -71,7 +81,7 @@ class WazeClient:
         lat_bottom: float,
         lon_left: float,
         lon_right: float,
-        max_retries: int = 3
+        max_retries: int = 3,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Query Waze for traffic notifications in a bounding box.
@@ -93,9 +103,9 @@ class WazeClient:
                         "left": str(lon_left),
                         "right": str(lon_right),
                         "env": "row",
-                        "types": "alerts,traffic,users"
+                        "types": "alerts,traffic,users",
                     },
-                    timeout=self.timeout
+                    timeout=self.timeout,
                 )
 
                 # Check for rate limiting responses
@@ -126,7 +136,7 @@ class WazeClient:
                         "latitude": loc.get("y", alert.get("latitude")),
                         "longitude": loc.get("x", alert.get("longitude")),
                         # Extract username from wazeData if available
-                        "reportBy": self._extract_username(alert)
+                        "reportBy": self._extract_username(alert),
                     }
                     alerts.append(transformed)
 
@@ -137,7 +147,7 @@ class WazeClient:
                 last_error = e
                 if attempt < max_retries - 1:
                     # Wait with exponential backoff before retry
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)
+                    wait_time = (2**attempt) + random.uniform(0, 1)
                     time.sleep(wait_time)
 
         # All retries failed
@@ -162,11 +172,7 @@ class WazeClient:
         return "anonymous"
 
     def get_users(
-        self,
-        lat_top: float,
-        lat_bottom: float,
-        lon_left: float,
-        lon_right: float
+        self, lat_top: float, lat_bottom: float, lon_left: float, lon_right: float
     ) -> List[Dict[str, Any]]:
         """Get active Waze users in a bounding box."""
         self.rate_limiter.wait()
@@ -180,9 +186,9 @@ class WazeClient:
                     "left": str(lon_left),
                     "right": str(lon_right),
                     "env": "row",
-                    "types": "users"
+                    "types": "users",
                 },
-                timeout=self.timeout
+                timeout=self.timeout,
             )
             response.raise_for_status()
             self.rate_limiter.success()
@@ -191,11 +197,13 @@ class WazeClient:
             users = []
             for user in data.get("users", []):
                 loc = user.get("location", {})
-                users.append({
-                    **user,
-                    "latitude": loc.get("y"),
-                    "longitude": loc.get("x"),
-                })
+                users.append(
+                    {
+                        **user,
+                        "latitude": loc.get("y"),
+                        "longitude": loc.get("x"),
+                    }
+                )
             return users
         except requests.RequestException:
             self.rate_limiter.error()
@@ -213,9 +221,9 @@ class WazeClient:
                     "left": "-3.71",
                     "right": "-3.70",
                     "env": "row",
-                    "types": "alerts"
+                    "types": "alerts",
                 },
-                timeout=5
+                timeout=5,
             )
             if response.status_code == 200:
                 self.rate_limiter.success()
@@ -231,5 +239,5 @@ class WazeClient:
         return {
             "current_delay": self.rate_limiter.current_delay,
             "consecutive_errors": self.rate_limiter.consecutive_errors,
-            "last_request": self.rate_limiter.last_request_time
+            "last_request": self.rate_limiter.last_request_time,
         }

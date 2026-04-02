@@ -2,6 +2,12 @@
 from typing import Any, Dict, List, Optional
 
 
+def _limit_clause(db, limit: int) -> tuple[str, tuple[int, ...]]:
+    if hasattr(db, "db_type") and db.db_type == "oracle":
+        return " FETCH FIRST :1 ROWS ONLY", (limit,)
+    return " LIMIT ?", (limit,)
+
+
 def get_stats(db) -> Dict[str, Any]:
     """Get summary statistics from the database."""
     total = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
@@ -29,8 +35,9 @@ def get_stats(db) -> Dict[str, Any]:
 
 def get_recent_events(db, limit: int = 20) -> List[Dict[str, Any]]:
     """Get most recent events."""
+    limit_sql, params = _limit_clause(db, limit)
     rows = db.execute(
-        "SELECT * FROM events ORDER BY timestamp_ms DESC LIMIT ?", (limit,)
+        f"SELECT * FROM events ORDER BY timestamp_ms DESC{limit_sql}", params
     ).fetchall()
     return [dict(row) for row in rows]
 
@@ -45,8 +52,9 @@ def get_user_events(db, username: str) -> List[Dict[str, Any]]:
 
 def get_users_summary(db, limit: int = 50) -> List[Dict[str, Any]]:
     """Get summary of users with event counts."""
+    limit_sql, params = _limit_clause(db, limit)
     rows = db.execute(
-        """
+        f"""
         SELECT
             username,
             COUNT(*) as event_count,
@@ -54,10 +62,9 @@ def get_users_summary(db, limit: int = 50) -> List[Dict[str, Any]]:
             MAX(timestamp_utc) as last_seen
         FROM events
         GROUP BY username
-        ORDER BY event_count DESC
-        LIMIT ?
+        ORDER BY event_count DESC{limit_sql}
     """,
-        (limit,),
+        params,
     ).fetchall()
     return [dict(row) for row in rows]
 

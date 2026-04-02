@@ -308,7 +308,7 @@ class WorldwideCollector:
 
     def run(self):
         """Main worldwide collection loop."""
-        from database import Database
+        from database_factory import get_database
         from waze_client import WazeClient
 
         # Create directories
@@ -332,7 +332,14 @@ class WorldwideCollector:
                 logger.warning(f"Config not found: {config_path}, skipping {region_name}")
                 continue
 
-            db = Database(db_path, check_same_thread=False)  # Thread-safe for parallel scanning
+            db_config = {
+                "database_type": self.config.get("database_type", "sqlite"),
+                "database_path": db_path,
+                "oracle_dsn": self.config.get("oracle_dsn"),
+                "oracle_schema": self.config.get("oracle_schema", "waze"),
+                "sqlite_fallback": self.config.get("sqlite_fallback", True),
+            }
+            db = get_database(db_config, region=region_name)
             client = WazeClient()
 
             scanner = RegionScanner(region_name, config_path, db, client)

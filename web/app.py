@@ -100,9 +100,14 @@ def get_db(region=None):
         config = {}
 
     if config.get("database_type") == "oracle":
-        from database_oracle import Database as OracleDatabase
+        try:
+            from database_oracle import Database as OracleDatabase
 
-        return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+            return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+        except Exception:
+            if not config.get("sqlite_fallback", False):
+                raise
+            logger.warning("Oracle unavailable, falling back to SQLite")
 
     if region and region in DB_PATHS:
         return _get_pooled_sqlite(DB_PATHS[region])

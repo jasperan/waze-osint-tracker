@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 @dataclass
 class GridCell:
     """A geographic grid cell."""
+
     name: str
     lat_top: float
     lat_bottom: float
@@ -142,15 +143,17 @@ def generate_city_grids(cell_size: float = 0.08) -> List[GridCell]:
                 elif lon_offset == 1:
                     suffix += "_e"
 
-                cells.append(GridCell(
-                    name=f"{city['name']}{suffix}",
-                    lat_top=round(lat_top, 4),
-                    lat_bottom=round(lat_bottom, 4),
-                    lon_left=round(lon_left, 4),
-                    lon_right=round(lon_right, 4),
-                    country=city["country"],
-                    priority=1
-                ))
+                cells.append(
+                    GridCell(
+                        name=f"{city['name']}{suffix}",
+                        lat_top=round(lat_top, 4),
+                        lat_bottom=round(lat_bottom, 4),
+                        lon_left=round(lon_left, 4),
+                        lon_right=round(lon_right, 4),
+                        country=city["country"],
+                        priority=1,
+                    )
+                )
 
     return cells
 
@@ -163,7 +166,7 @@ def generate_europe_coverage_grids(cell_size: float = 1.0) -> List[GridCell]:
     lat_south = 35.0  # Southern Spain/Greece
     lat_north = 71.0  # Northern Scandinavia
     lon_west = -11.0  # Portugal/Ireland
-    lon_east = 40.0   # Eastern Europe
+    lon_east = 40.0  # Eastern Europe
 
     lat = lat_south
     while lat < lat_north:
@@ -184,15 +187,17 @@ def generate_europe_coverage_grids(cell_size: float = 1.0) -> List[GridCell]:
 
             if is_land:
                 name = f"eu_{int(lat)}_{int(lon)}".replace("-", "m")
-                cells.append(GridCell(
-                    name=name,
-                    lat_top=round(lat + cell_size, 2),
-                    lat_bottom=round(lat, 2),
-                    lon_left=round(lon, 2),
-                    lon_right=round(lon + cell_size, 2),
-                    country="EU",
-                    priority=3
-                ))
+                cells.append(
+                    GridCell(
+                        name=name,
+                        lat_top=round(lat + cell_size, 2),
+                        lat_bottom=round(lat, 2),
+                        lon_left=round(lon, 2),
+                        lon_right=round(lon + cell_size, 2),
+                        country="EU",
+                        priority=3,
+                    )
+                )
 
             lon += cell_size
         lat += cell_size
@@ -216,8 +221,10 @@ def get_all_europe_cells(include_coarse: bool = True) -> List[GridCell]:
             # Check if any city is in this coarse cell
             has_city = False
             for clat, clon in city_centers:
-                if (cell.lat_bottom <= clat <= cell.lat_top and
-                    cell.lon_left <= clon <= cell.lon_right):
+                if (
+                    cell.lat_bottom <= clat <= cell.lat_top
+                    and cell.lon_left <= clon <= cell.lon_right
+                ):
                     has_city = True
                     break
             if not has_city:
@@ -240,7 +247,7 @@ def save_europe_config(output_path: str = "config_europe.yaml"):
         "waze_server_url": "http://localhost:8080",
         "database_path": "./data/waze_europe.db",
         "collection_mode": "europe",
-        "grid_cells": [c.to_dict() for c in cells]
+        "grid_cells": [c.to_dict() for c in cells],
     }
 
     with open(output_path, "w") as f:

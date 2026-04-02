@@ -15,6 +15,8 @@ import oracledb
 class Database:
     """Oracle implementation matching the SQLite Database interface."""
 
+    db_type = "oracle"
+
     def __init__(self, dsn: str, schema: str = "waze"):
         self.dsn = dsn
         self.schema = schema

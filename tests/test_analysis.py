@@ -13,15 +13,39 @@ def test_get_stats_returns_summary():
 
         # Insert test events
         events = [
-            {"event_hash": "a1", "username": "user1", "latitude": 40.42, "longitude": -3.70,
-             "timestamp_utc": "2026-01-24T10:00:00Z", "timestamp_ms": 1737709200000,
-             "report_type": "POLICE", "collected_at": "2026-01-24T10:01:00Z", "grid_cell": "test"},
-            {"event_hash": "a2", "username": "user1", "latitude": 40.43, "longitude": -3.71,
-             "timestamp_utc": "2026-01-24T11:00:00Z", "timestamp_ms": 1737712800000,
-             "report_type": "JAM", "collected_at": "2026-01-24T11:01:00Z", "grid_cell": "test"},
-            {"event_hash": "a3", "username": "user2", "latitude": 40.44, "longitude": -3.72,
-             "timestamp_utc": "2026-01-24T12:00:00Z", "timestamp_ms": 1737716400000,
-             "report_type": "POLICE", "collected_at": "2026-01-24T12:01:00Z", "grid_cell": "test"},
+            {
+                "event_hash": "a1",
+                "username": "user1",
+                "latitude": 40.42,
+                "longitude": -3.70,
+                "timestamp_utc": "2026-01-24T10:00:00Z",
+                "timestamp_ms": 1737709200000,
+                "report_type": "POLICE",
+                "collected_at": "2026-01-24T10:01:00Z",
+                "grid_cell": "test",
+            },
+            {
+                "event_hash": "a2",
+                "username": "user1",
+                "latitude": 40.43,
+                "longitude": -3.71,
+                "timestamp_utc": "2026-01-24T11:00:00Z",
+                "timestamp_ms": 1737712800000,
+                "report_type": "JAM",
+                "collected_at": "2026-01-24T11:01:00Z",
+                "grid_cell": "test",
+            },
+            {
+                "event_hash": "a3",
+                "username": "user2",
+                "latitude": 40.44,
+                "longitude": -3.72,
+                "timestamp_utc": "2026-01-24T12:00:00Z",
+                "timestamp_ms": 1737716400000,
+                "report_type": "POLICE",
+                "collected_at": "2026-01-24T12:01:00Z",
+                "grid_cell": "test",
+            },
         ]
         for event in events:
             db.insert_event(event)
@@ -35,18 +59,35 @@ def test_get_stats_returns_summary():
 
         db.close()
 
+
 def test_get_recent_events():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
         db = Database(db_path)
 
         events = [
-            {"event_hash": "a1", "username": "user1", "latitude": 40.42, "longitude": -3.70,
-             "timestamp_utc": "2026-01-24T10:00:00Z", "timestamp_ms": 1737709200000,
-             "report_type": "POLICE", "collected_at": "2026-01-24T10:01:00Z", "grid_cell": "test"},
-            {"event_hash": "a2", "username": "user2", "latitude": 40.43, "longitude": -3.71,
-             "timestamp_utc": "2026-01-24T11:00:00Z", "timestamp_ms": 1737712800000,
-             "report_type": "JAM", "collected_at": "2026-01-24T11:01:00Z", "grid_cell": "test"},
+            {
+                "event_hash": "a1",
+                "username": "user1",
+                "latitude": 40.42,
+                "longitude": -3.70,
+                "timestamp_utc": "2026-01-24T10:00:00Z",
+                "timestamp_ms": 1737709200000,
+                "report_type": "POLICE",
+                "collected_at": "2026-01-24T10:01:00Z",
+                "grid_cell": "test",
+            },
+            {
+                "event_hash": "a2",
+                "username": "user2",
+                "latitude": 40.43,
+                "longitude": -3.71,
+                "timestamp_utc": "2026-01-24T11:00:00Z",
+                "timestamp_ms": 1737712800000,
+                "report_type": "JAM",
+                "collected_at": "2026-01-24T11:01:00Z",
+                "grid_cell": "test",
+            },
         ]
         for event in events:
             db.insert_event(event)
@@ -58,18 +99,35 @@ def test_get_recent_events():
 
         db.close()
 
+
 def test_get_user_profile():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "test.db")
         db = Database(db_path)
 
         events = [
-            {"event_hash": "a1", "username": "tracker1", "latitude": 40.42, "longitude": -3.70,
-             "timestamp_utc": "2026-01-24T10:00:00Z", "timestamp_ms": 1737709200000,
-             "report_type": "POLICE", "collected_at": "2026-01-24T10:01:00Z", "grid_cell": "test"},
-            {"event_hash": "a2", "username": "tracker1", "latitude": 40.44, "longitude": -3.72,
-             "timestamp_utc": "2026-01-24T11:00:00Z", "timestamp_ms": 1737712800000,
-             "report_type": "JAM", "collected_at": "2026-01-24T11:01:00Z", "grid_cell": "test"},
+            {
+                "event_hash": "a1",
+                "username": "tracker1",
+                "latitude": 40.42,
+                "longitude": -3.70,
+                "timestamp_utc": "2026-01-24T10:00:00Z",
+                "timestamp_ms": 1737709200000,
+                "report_type": "POLICE",
+                "collected_at": "2026-01-24T10:01:00Z",
+                "grid_cell": "test",
+            },
+            {
+                "event_hash": "a2",
+                "username": "tracker1",
+                "latitude": 40.44,
+                "longitude": -3.72,
+                "timestamp_utc": "2026-01-24T11:00:00Z",
+                "timestamp_ms": 1737712800000,
+                "report_type": "JAM",
+                "collected_at": "2026-01-24T11:01:00Z",
+                "grid_cell": "test",
+            },
         ]
         for event in events:
             db.insert_event(event)
@@ -84,6 +142,7 @@ def test_get_user_profile():
         assert profile["type_breakdown"]["JAM"] == 1
 
         db.close()
+
 
 def test_get_user_profile_not_found():
     with tempfile.TemporaryDirectory() as tmpdir:
