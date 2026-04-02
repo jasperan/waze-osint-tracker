@@ -7,6 +7,7 @@ import queue
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import yaml
@@ -28,8 +29,10 @@ event_queues_lock = threading.Lock()
 
 MAX_SSE_CLIENTS = 50
 
-# Stats cache (expensive query - cache for 60 seconds)
+# Stats cache (expensive query - cache for 5 minutes, warmed in background)
+_STATS_CACHE_TTL = 300
 _stats_cache = {"data": None, "expires": 0}
+_stats_warming = threading.Event()
 
 # Connection pool for SQLite databases — avoids opening/closing on every request.
 # Maps db_path -> Database instance.  Thread-safe because SQLite connections are
@@ -104,10 +107,10 @@ def get_db(region=None):
             from database_oracle import Database as OracleDatabase
 
             return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
-        except Exception:
+        except Exception as exc:
             if not config.get("sqlite_fallback", False):
                 raise
-            logger.warning("Oracle unavailable, falling back to SQLite")
+            logger.warning("Oracle unavailable (%s), falling back to SQLite", exc)
 
     if region and region in DB_PATHS:
         return _get_pooled_sqlite(DB_PATHS[region])
@@ -132,8 +135,10 @@ def get_all_dbs():
 
             db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
             return [("all", db)]
-        except Exception:
-            logger.warning("Oracle configured but unavailable, falling back to SQLite")
+        except Exception as exc:
+            if not config.get("sqlite_fallback", False):
+                raise
+            logger.warning("Oracle unavailable (%s), falling back to SQLite", exc)
 
     dbs = []
     for region, path in DB_PATHS.items():
@@ -164,41 +169,48 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/api/stats")
-def api_stats():
-    """Get summary statistics from all databases (cached 60s)."""
-    now = time.time()
-    if _stats_cache["data"] and now < _stats_cache["expires"]:
-        return jsonify(_stats_cache["data"])
+def _query_region_stats(region_db_pair):
+    """Query stats for a single region DB (runs in thread pool)."""
+    region, db = region_db_pair
+    try:
+        row = db.execute("""
+            SELECT COUNT(*) as count,
+                   COUNT(DISTINCT username) as users,
+                   MIN(timestamp_utc) as first_event,
+                   MAX(timestamp_utc) as last_event
+            FROM events
+        """).fetchone()
+        if row:
+            return {
+                "count": row["count"] or 0,
+                "users": row["users"] or 0,
+                "first_event": row["first_event"],
+                "last_event": row["last_event"],
+            }
+    except Exception as e:
+        logger.warning("Stats error for %s: %s", region, e)
+    return {"count": 0, "users": 0, "first_event": None, "last_event": None}
 
+
+def _compute_stats():
+    """Compute stats from all DBs in parallel, update cache."""
+    dbs = get_all_dbs()
     total_events = 0
     total_unique_users = 0
     first_event = None
     last_event = None
 
-    for region, db in get_all_dbs():
-        try:
-            row = db.execute("""
-                SELECT COUNT(*) as count,
-                       COUNT(DISTINCT username) as users,
-                       MIN(timestamp_utc) as first_event,
-                       MAX(timestamp_utc) as last_event
-                FROM events
-            """).fetchone()
+    with ThreadPoolExecutor(max_workers=len(dbs) or 1) as pool:
+        results = pool.map(_query_region_stats, dbs)
 
-            if row:
-                total_events += row["count"] or 0
-                total_unique_users += row["users"] or 0
-
-                if row["first_event"]:
-                    if first_event is None or row["first_event"] < first_event:
-                        first_event = row["first_event"]
-                if row["last_event"]:
-                    if last_event is None or row["last_event"] > last_event:
-                        last_event = row["last_event"]
-
-        except Exception as e:
-            print(f"Stats error for {region}: {e}")
+    for r in results:
+        total_events += r["count"]
+        total_unique_users += r["users"]
+        fe, le = r["first_event"], r["last_event"]
+        if fe and (first_event is None or fe < first_event):
+            first_event = fe
+        if le and (last_event is None or le > last_event):
+            last_event = le
 
     result = {
         "total_events": total_events,
@@ -207,7 +219,36 @@ def api_stats():
         "last_event": last_event,
     }
     _stats_cache["data"] = result
-    _stats_cache["expires"] = time.time() + 60
+    _stats_cache["expires"] = time.time() + _STATS_CACHE_TTL
+    return result
+
+
+def _warm_stats_cache():
+    """Background thread that pre-warms the stats cache on startup."""
+    _stats_warming.set()
+    try:
+        _compute_stats()
+        logger.info("Stats cache warmed successfully")
+    except Exception as e:
+        logger.warning("Stats cache warmup failed: %s", e)
+    finally:
+        _stats_warming.clear()
+
+
+@app.route("/api/stats")
+def api_stats():
+    """Get summary statistics from all databases (cached, parallel queries)."""
+    now = time.time()
+    if _stats_cache["data"] and now < _stats_cache["expires"]:
+        return jsonify(_stats_cache["data"])
+
+    if _stats_warming.is_set():
+        # Warmup in progress, return stale data or empty
+        if _stats_cache["data"]:
+            return jsonify(_stats_cache["data"])
+        return jsonify({"total_events": 0, "unique_users": 0, "message": "Computing stats..."})
+
+    result = _compute_stats()
     return jsonify(result)
 
 
@@ -707,9 +748,16 @@ def _ensure_monitor_started():
         monitor_thread.start()
 
 
+_stats_warmup_done = False
+
+
 @app.before_request
 def _start_monitor():
+    global _stats_warmup_done
     _ensure_monitor_started()
+    if not _stats_warmup_done:
+        _stats_warmup_done = True
+        threading.Thread(target=_warm_stats_cache, daemon=True).start()
 
 
 # === Intelligence API endpoints ===
@@ -1413,5 +1461,7 @@ if __name__ == "__main__":
     except Exception:
         print(f"Database: {DB_PATH}")
     print("Starting server at http://localhost:5000")
+    # Warm stats cache in background so first request is fast
+    threading.Thread(target=_warm_stats_cache, daemon=True).start()
     debug = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true")
     app.run(debug=debug, host="0.0.0.0", port=5000, threaded=True)

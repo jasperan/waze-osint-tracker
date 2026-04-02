@@ -83,10 +83,10 @@ def get_db(region=None):
             from database_oracle import Database as OracleDatabase
 
             return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
-        except Exception:
+        except Exception as exc:
             if not config.get("sqlite_fallback", False):
                 raise
-            click.echo("Oracle unavailable, falling back to SQLite", err=True)
+            click.echo(f"Oracle unavailable ({exc}), falling back to SQLite", err=True)
 
     from database import Database
 
@@ -110,10 +110,10 @@ def get_all_dbs():
 
             db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
             return [("all", db)]
-        except Exception:
+        except Exception as exc:
             if not config.get("sqlite_fallback", False):
                 raise
-            click.echo("Oracle unavailable, falling back to SQLite", err=True)
+            click.echo(f"Oracle unavailable ({exc}), falling back to SQLite", err=True)
 
     from database import Database
 
