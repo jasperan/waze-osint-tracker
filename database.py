@@ -1,6 +1,7 @@
 # database.py
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 
 class Database:
@@ -112,7 +113,7 @@ class Database:
         requests: int = 0,
         errors: int = 0,
         cells: int = 0,
-        by_type: dict = None,
+        by_type: dict[str, Any] | None = None,
     ):
         """Update daily collection statistics."""
         import json

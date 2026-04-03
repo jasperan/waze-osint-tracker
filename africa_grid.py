@@ -2,7 +2,7 @@
 """Generate grid cells covering Africa for Waze data collection."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 
 @dataclass
@@ -27,8 +27,23 @@ class GridCell:
         }
 
 
+class CitySpec(TypedDict):
+    name: str
+    lat: float
+    lon: float
+    country: str
+
+
+class CoverageRegion(TypedDict):
+    name: str
+    lat_s: float
+    lat_n: float
+    lon_w: float
+    lon_e: float
+
+
 # Major African cities
-AFRICA_CITIES = [
+AFRICA_CITIES: List[CitySpec] = [
     # South Africa
     {"name": "johannesburg", "lat": -26.20, "lon": 28.04, "country": "ZA"},
     {"name": "cape_town", "lat": -33.93, "lon": 18.42, "country": "ZA"},
@@ -131,7 +146,7 @@ def generate_africa_coverage_grids(cell_size: float = 2.0) -> List[GridCell]:
     cells = []
 
     # Africa bounds
-    regions = [
+    regions: List[CoverageRegion] = [
         # North Africa
         {"name": "north", "lat_s": 18, "lat_n": 38, "lon_w": -18, "lon_e": 36},
         # West Africa

@@ -5,7 +5,7 @@ co-occurrence detection, and dossier generation against Oracle 26ai."""
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -33,7 +33,7 @@ class IntelligencePipeline:
         """
         self.db = db
 
-    def build_user_vectors(self, min_events: int = 20, region: str = None):
+    def build_user_vectors(self, min_events: int = 20, region: str | None = None):
         """Build behavioral vectors for all qualifying users."""
         logger.info("Building behavioral vectors (min_events=%d)", min_events)
 
@@ -75,11 +75,11 @@ class IntelligencePipeline:
                 continue
 
             # Determine region from most frequent
-            region_counts = {}
+            region_counts: dict[str, int] = {}
             for e in events:
                 r = e.get("region", "global")
                 region_counts[r] = region_counts.get(r, 0) + 1
-            primary_region = max(region_counts, key=region_counts.get)
+            primary_region = max(region_counts, key=lambda key: region_counts[key])
             bbox = REGION_BBOXES.get(primary_region, REGION_BBOXES["global"])
 
             # Build vector
@@ -231,7 +231,7 @@ class IntelligencePipeline:
         logger.info("Routine inference complete: %d users", processed)
         return processed
 
-    def find_similar_users(self, username: str, top_k: int = 10):
+    def find_similar_users(self, username: str, top_k: int = 10) -> list[dict[str, Any]]:
         """Find most behaviorally similar users via Oracle AI Vector Search."""
         cursor = self.db.execute(
             "SELECT behavior_vector FROM user_behavioral_vectors WHERE username = :1", (username,)
@@ -257,7 +257,7 @@ class IntelligencePipeline:
         columns = [c[0].lower() for c in cursor.description]
         return [dict(zip(columns, r)) for r in cursor.fetchall()]
 
-    def build_cooccurrence_graph(self, region: str = None):
+    def build_cooccurrence_graph(self, region: str | None = None):
         """Build co-occurrence edges from events."""
         logger.info("Building co-occurrence graph")
 

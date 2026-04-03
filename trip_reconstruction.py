@@ -267,11 +267,11 @@ def get_trip_summary(trips: List[Trip]) -> Dict:
     total_dist = sum(t.distance_km for t in trips)
     total_dur_min = sum(t.duration_minutes for t in trips)
 
-    type_counts = {}
+    type_counts: Dict[str, int] = {}
     for t in trips:
         type_counts[t.trip_type] = type_counts.get(t.trip_type, 0) + 1
 
-    most_common = max(type_counts, key=type_counts.get) if type_counts else None
+    most_common = max(type_counts, key=lambda key: type_counts[key]) if type_counts else None
 
     return {
         "total_trips": len(trips),

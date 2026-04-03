@@ -5,6 +5,7 @@ All tests mock the database — no Oracle connection required.
 """
 
 import json
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -401,7 +402,7 @@ class TestGenerateUserDossier:
 
         # Mock find_similar_users — we mock at the method level
         # (it makes its own db.execute calls so easier to patch at pipeline level)
-        pipeline.find_similar_users = MagicMock(
+        cast(Any, pipeline).find_similar_users = MagicMock(
             return_value=[
                 {"username": "similar_1", "distance": 0.1},
             ]
@@ -482,7 +483,7 @@ class TestGenerateUserDossier:
         ]
         routines_cursor.fetchall.return_value = []
 
-        pipeline.find_similar_users = MagicMock(return_value=[])
+        cast(Any, pipeline).find_similar_users = MagicMock(return_value=[])
 
         co_cursor = MagicMock()
         co_cursor.fetchall.return_value = []

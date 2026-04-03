@@ -16,8 +16,17 @@ progress.md
 # Claude Code / IDE files
 CLAUDE.md
 .claude/
+.codex
+.codex/
+.omc/
+.omx/
+.agents/
+.crush/
+.openhands/
+.pi/
 .serena/
 .playwright-mcp/
+content/
 
 # Build artifacts
 dist/

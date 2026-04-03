@@ -2,7 +2,7 @@
 """Generate grid cells for Oceania Waze data collection."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 
 @dataclass
@@ -27,8 +27,23 @@ class GridCell:
         }
 
 
+class CitySpec(TypedDict):
+    name: str
+    lat: float
+    lon: float
+    country: str
+
+
+class CoverageRegion(TypedDict):
+    name: str
+    lat_s: float
+    lat_n: float
+    lon_w: float
+    lon_e: float
+
+
 # Major Oceanian cities
-OCEANIA_CITIES = [
+OCEANIA_CITIES: List[CitySpec] = [
     # Australia
     {"name": "sydney", "lat": -33.87, "lon": 151.21, "country": "AU"},
     {"name": "melbourne", "lat": -37.81, "lon": 144.96, "country": "AU"},
@@ -103,7 +118,7 @@ def generate_oceania_coverage_grids(cell_size: float = 2.0) -> List[GridCell]:
     """Generate coarse grid cells covering Oceania land masses."""
     cells = []
 
-    regions = [
+    regions: List[CoverageRegion] = [
         # Australia
         {"name": "au", "lat_s": -44, "lat_n": -10, "lon_w": 112, "lon_e": 154},
         # New Zealand

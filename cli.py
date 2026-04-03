@@ -6,9 +6,11 @@ import signal
 import sys
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import click
 import yaml
@@ -154,7 +156,7 @@ def write_status(
     total_cells: int,
     alerts_count: int,
     new_count: int,
-    event_types: list = None,
+    event_types: list[str] | None = None,
 ):
     """Write current collector status to file for UI consumption (thread-safe)."""
     try:
@@ -272,10 +274,10 @@ class RegionScanner:
     def scan(
         self,
         priority: int,
-        running_flag,
-        already_scanned: set = None,
-        on_cell_scanned: callable = None,
-    ) -> dict:
+        running_flag: Callable[[], bool],
+        already_scanned: set[str] | None = None,
+        on_cell_scanned: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         """Scan cells of given priority, skipping already-scanned cells."""
         cells = self.cells_by_priority.get(priority, [])
         stats = {"requests": 0, "errors": 0, "events": 0, "cells": len(cells), "scanned_cells": []}
@@ -303,7 +305,7 @@ class RegionScanner:
                 remaining_cells, total_cells, running_flag, on_cell_scanned, stats
             )
 
-    def _scan_cell(self, idx: int, cell: dict, total_cells: int) -> dict:
+    def _scan_cell(self, idx: int, cell: dict[str, Any], total_cells: int) -> dict[str, Any]:
         """Scan a single cell and return results."""
         cell_name = cell["name"]
         country = cell.get("country", "??")
@@ -345,7 +347,9 @@ class RegionScanner:
 
         return result
 
-    def _process_cell_result(self, result: dict, on_cell_scanned: callable):
+    def _process_cell_result(
+        self, result: dict[str, Any], on_cell_scanned: Callable[[str], None] | None
+    ) -> None:
         """Process and log cell scan result."""
         cell_name = result["cell_name"]
 
@@ -399,10 +403,10 @@ class RegionScanner:
         self,
         remaining_cells: list,
         total_cells: int,
-        running_flag,
-        on_cell_scanned: callable,
-        stats: dict,
-    ) -> dict:
+        running_flag: Callable[[], bool],
+        on_cell_scanned: Callable[[str], None] | None,
+        stats: dict[str, Any],
+    ) -> dict[str, Any]:
         """Scan cells sequentially."""
         for idx, cell in remaining_cells:
             if not running_flag():
@@ -422,10 +426,10 @@ class RegionScanner:
         self,
         remaining_cells: list,
         total_cells: int,
-        running_flag,
-        on_cell_scanned: callable,
-        stats: dict,
-    ) -> dict:
+        running_flag: Callable[[], bool],
+        on_cell_scanned: Callable[[str], None] | None,
+        stats: dict[str, Any],
+    ) -> dict[str, Any]:
         """Scan cells in parallel using ThreadPoolExecutor."""
         import threading
 
@@ -484,7 +488,7 @@ class CLIWorldwideCollector:
         self.scanners = {}
         self.databases = {}
         self.clients = {}
-        self.logger = None
+        self.logger: logging.Logger | None = None
 
     def _setup_logging(self):
         """Set up logging for the collector."""
@@ -520,6 +524,8 @@ class CLIWorldwideCollector:
 
     def log(self, msg, level="info"):
         """Log message to both file and console."""
+        if self.logger is None:
+            return
         if level == "info":
             self.logger.info(msg)
         elif level == "error":
@@ -923,7 +929,8 @@ class CLIWorldwideCollector:
 
         except Exception as e:
             console.print(f"[bold red]Fatal error: {e}[/bold red]")
-            self.logger.error(f"Fatal error: {e}", exc_info=True)
+            if self.logger is not None:
+                self.logger.error(f"Fatal error: {e}", exc_info=True)
             raise
         finally:
             self._remove_pid()
@@ -1089,8 +1096,9 @@ def logs(lines, follow):
             )
 
             try:
-                for line in process.stdout:
-                    colorize_log_line(line)
+                if process.stdout is not None:
+                    for line in process.stdout:
+                        colorize_log_line(line)
             except KeyboardInterrupt:
                 process.terminate()
                 console.print("\n[bold yellow]Disconnected from logs.[/bold yellow]")
@@ -1478,7 +1486,7 @@ def search(username, report_type, since, limit):
             click.echo(f"Unknown time unit: {unit}")
             return
 
-        cutoff = datetime.utcnow() - delta
+        cutoff = datetime.now(timezone.utc) - delta
         query += " AND timestamp_utc >= ?"
         params.append(cutoff.isoformat())
 

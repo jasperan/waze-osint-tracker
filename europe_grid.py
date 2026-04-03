@@ -2,7 +2,7 @@
 """Generate grid cells covering all of Europe for Waze data collection."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 
 @dataclass
@@ -37,8 +37,15 @@ class GridCell:
         }
 
 
+class CitySpec(TypedDict):
+    name: str
+    lat: float
+    lon: float
+    country: str
+
+
 # Major European cities with high-priority grids (0.1° cells for detail)
-MAJOR_CITIES = [
+MAJOR_CITIES: List[CitySpec] = [
     # Spain
     {"name": "madrid", "lat": 40.42, "lon": -3.70, "country": "ES"},
     {"name": "barcelona", "lat": 41.39, "lon": 2.17, "country": "ES"},

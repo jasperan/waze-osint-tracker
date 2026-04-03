@@ -11,7 +11,7 @@ Each anomaly is scored individually, then combined into an overall 0-100 score.
 import math
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from utils import haversine_km as _haversine_km
 
@@ -73,7 +73,7 @@ def _geo_spread_km(events: List[Dict], centroid_lat: float, centroid_lon: float)
     return sum(distances) / len(distances)
 
 
-def _std_dev(values: List[float]) -> float:
+def _std_dev(values: Sequence[float | int]) -> float:
     """Population standard deviation."""
     if len(values) < 2:
         return 0.0

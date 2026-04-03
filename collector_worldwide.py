@@ -8,6 +8,7 @@ import os
 import signal
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +31,7 @@ def write_status(
     total_cells: int,
     alerts_count: int,
     new_count: int,
-    event_types: List[str] = None,
+    event_types: List[str] | None = None,
 ):
     """Write current collector status to file for UI consumption (thread-safe)."""
     try:
@@ -98,7 +99,7 @@ logging.basicConfig(
 logger = logging.getLogger("worldwide")
 
 
-from utils import generate_event_hash  # noqa: E402
+from utils import generate_event_hash, load_config  # noqa: E402
 
 
 def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
@@ -154,9 +155,9 @@ class RegionScanner:
     def scan(
         self,
         priority: int,
-        running_flag,
-        already_scanned: set = None,
-        on_cell_scanned: callable = None,
+        running_flag: Callable[[], bool],
+        already_scanned: set[str] | None = None,
+        on_cell_scanned: Callable[[str], None] | None = None,
     ) -> Dict[str, Any]:
         """Scan cells of given priority, skipping already-scanned cells.
 
@@ -268,6 +269,7 @@ class WorldwideCollector:
         self.scanners = {}
         self.databases = {}
         self.clients = {}
+        self.config = load_config()
 
     def _generate_all_configs(self):
         """Generate all regional configs."""

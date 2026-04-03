@@ -50,7 +50,7 @@ class WazeClient:
 
     WAZE_API_URL = "https://www.waze.com/live-map/api/georss"
 
-    def __init__(self, server_url: str = None, timeout: int = 30):
+    def __init__(self, server_url: str | None = None, timeout: int = 30):
         """
         Initialize WazeClient.
 

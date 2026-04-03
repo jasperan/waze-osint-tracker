@@ -2,7 +2,7 @@
 """Generate grid cells covering North and South America for Waze data collection."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 
 @dataclass
@@ -29,8 +29,23 @@ class GridCell:
         }
 
 
+class CitySpec(TypedDict):
+    name: str
+    lat: float
+    lon: float
+    country: str
+
+
+class CoverageRegion(TypedDict):
+    name: str
+    lat_s: float
+    lat_n: float
+    lon_w: float
+    lon_e: float
+
+
 # Major cities in the Americas
-AMERICAS_CITIES = [
+AMERICAS_CITIES: List[CitySpec] = [
     # USA - Major metros
     {"name": "new_york", "lat": 40.71, "lon": -74.01, "country": "US"},
     {"name": "los_angeles", "lat": 34.05, "lon": -118.24, "country": "US"},
@@ -168,7 +183,7 @@ def generate_americas_coverage_grids(cell_size: float = 2.0) -> List[GridCell]:
     cells = []
 
     # North America bounds
-    regions = [
+    regions: List[CoverageRegion] = [
         # Continental US
         {"name": "us", "lat_s": 25, "lat_n": 49, "lon_w": -125, "lon_e": -67},
         # Canada (southern)

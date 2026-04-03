@@ -8,7 +8,7 @@ import signal
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 import yaml
 
@@ -21,6 +21,14 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+class CollectorStats(TypedDict):
+    total_requests: int
+    total_errors: int
+    total_events: int
+    last_full_scan: str | None
+    current_cycle: int
 
 
 def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
@@ -65,7 +73,7 @@ class EuropeCollector:
         self.config = self._load_config()
         self.running = False
         self.pid_file = "collector_europe.pid"
-        self.stats = {
+        self.stats: CollectorStats = {
             "total_requests": 0,
             "total_errors": 0,
             "total_events": 0,

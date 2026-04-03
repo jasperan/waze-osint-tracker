@@ -49,13 +49,13 @@ def process_alert(alert: Dict[str, Any], grid_cell: str) -> Dict[str, Any]:
 
 
 class Collector:
-    def __init__(self, config_path: str = "config.yaml", web_port: int = None):
+    def __init__(self, config_path: str = "config.yaml", web_port: int | None = None):
         self.config_path = config_path
         self.config = self._load_config()
         self.running = False
         self.pid_file = "collector.pid"
         self.web_port = web_port
-        self.logger = None
+        self.logger: logging.Logger | None = None
         self._setup_logging()
 
     def _setup_logging(self):
@@ -78,7 +78,8 @@ class Collector:
 
     def log(self, msg):
         """Log a message to both console and file."""
-        self.logger.info(msg)
+        if self.logger is not None:
+            self.logger.info(msg)
 
     def _load_config(self) -> Dict[str, Any]:
         with open(self.config_path) as f:
@@ -174,7 +175,13 @@ class Collector:
 
                     try:
                         cycle_requests += 1
-                        alerts, jams = client.get_traffic_notifications(**cell.to_params())
+                        params = cell.to_params()
+                        alerts, jams = client.get_traffic_notifications(
+                            lat_top=params["lat_top"],
+                            lat_bottom=params["lat_bottom"],
+                            lon_left=params["lon_left"],
+                            lon_right=params["lon_right"],
+                        )
                         new_count = 0
 
                         for alert in alerts:

@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from typing import Any, TypedDict
 
 import yaml
 from flask import Flask, Response, jsonify, render_template, request
@@ -31,7 +32,14 @@ MAX_SSE_CLIENTS = 50
 
 # Stats cache (expensive query - cache for 5 minutes, warmed in background)
 _STATS_CACHE_TTL = 300
-_stats_cache = {"data": None, "expires": 0}
+
+
+class StatsCache(TypedDict):
+    data: dict[str, Any] | None
+    expires: float
+
+
+_stats_cache: StatsCache = {"data": None, "expires": 0.0}
 _stats_warming = threading.Event()
 
 # Connection pool for SQLite databases — avoids opening/closing on every request.
@@ -47,6 +55,7 @@ STATUS_FILE = os.path.join(
 
 # Project root for config file discovery
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_STATUS_STALE_SECONDS = 600
 
 
 def _load_web_config():
@@ -616,6 +625,19 @@ def api_status():
         if os.path.exists(STATUS_FILE):
             with open(STATUS_FILE, "r") as f:
                 status = json.load(f)
+            timestamp = status.get("timestamp")
+            if timestamp:
+                try:
+                    updated_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - updated_at).total_seconds()
+                    if age > _STATUS_STALE_SECONDS:
+                        status["status"] = "stale"
+                        status["stale"] = True
+                        status["message"] = "Collector status file is stale"
+                except ValueError:
+                    status["status"] = "stale"
+                    status["stale"] = True
+                    status["message"] = "Collector status timestamp is invalid"
             return jsonify(status)
     except Exception:
         logger.warning("Failed to read collector status file")

@@ -18,7 +18,7 @@ from utils import haversine_km as _haversine_km
 
 def _cluster_locations(
     coords: np.ndarray, eps_km: float = 0.5, min_samples: int = 3
-) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray, int]]:
     """Run DBSCAN on coordinate pairs and return clusters sorted by size (largest first).
 
     Args:

@@ -2,7 +2,7 @@
 """Generate grid cells covering Asia for Waze data collection."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 
 @dataclass
@@ -27,8 +27,23 @@ class GridCell:
         }
 
 
+class CitySpec(TypedDict):
+    name: str
+    lat: float
+    lon: float
+    country: str
+
+
+class CoverageRegion(TypedDict):
+    name: str
+    lat_s: float
+    lat_n: float
+    lon_w: float
+    lon_e: float
+
+
 # Major Asian cities
-ASIA_CITIES = [
+ASIA_CITIES: List[CitySpec] = [
     # Japan
     {"name": "tokyo", "lat": 35.68, "lon": 139.69, "country": "JP"},
     {"name": "osaka", "lat": 34.69, "lon": 135.50, "country": "JP"},
@@ -161,7 +176,7 @@ def generate_asia_coverage_grids(cell_size: float = 2.0) -> List[GridCell]:
     """Generate coarse grid cells covering Asia."""
     cells = []
 
-    regions = [
+    regions: List[CoverageRegion] = [
         # East Asia
         {"name": "east_asia", "lat_s": 20, "lat_n": 54, "lon_w": 100, "lon_e": 145},
         # Southeast Asia

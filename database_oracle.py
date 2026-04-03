@@ -8,6 +8,7 @@ All tables must already exist (created by scripts/init_oracle.sql).
 """
 
 import re
+from typing import Any
 
 import oracledb
 
@@ -69,7 +70,9 @@ class Database:
         cur.execute(translated, list(params))
         # Only set rowfactory for queries that return rows
         if cur.description is not None:
-            cur.rowfactory = lambda *args: dict(zip([d[0].lower() for d in cur.description], args))
+            description = cur.description
+            columns = [str(d[0]).lower() for d in description]
+            cur.rowfactory = lambda *args: dict(zip(columns, args))
         return cur
 
     def commit(self):
@@ -167,7 +170,9 @@ class Database:
             """,
             [limit],
         )
-        cur.rowfactory = lambda *args: dict(zip([d[0].lower() for d in cur.description], args))
+        description = cur.description or []
+        columns = [str(d[0]).lower() for d in description]
+        cur.rowfactory = lambda *args: dict(zip(columns, args))
         return cur.fetchall()
 
     # ------------------------------------------------------------------
@@ -182,7 +187,7 @@ class Database:
         requests: int = 0,
         errors: int = 0,
         cells: int = 0,
-        by_type: dict = None,
+        by_type: dict[str, Any] | None = None,
         region: str = "madrid",
     ):
         """Upsert daily statistics via MERGE.
@@ -225,7 +230,9 @@ class Database:
             """,
             [days],
         )
-        cur.rowfactory = lambda *args: dict(zip([d[0].lower() for d in cur.description], args))
+        description = cur.description or []
+        columns = [str(d[0]).lower() for d in description]
+        cur.rowfactory = lambda *args: dict(zip(columns, args))
         return cur.fetchall()
 
     # ------------------------------------------------------------------
@@ -247,6 +254,8 @@ class Database:
             FROM events
             """
         )
-        cur.rowfactory = lambda *args: dict(zip([d[0].lower() for d in cur.description], args))
+        description = cur.description or []
+        columns = [str(d[0]).lower() for d in description]
+        cur.rowfactory = lambda *args: dict(zip(columns, args))
         row = cur.fetchone()
         return row if row else {}
