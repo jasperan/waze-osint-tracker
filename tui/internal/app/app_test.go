@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jasperan/waze-madrid-logger/tui/internal/api"
+	"github.com/jasperan/waze-madrid-logger/tui/internal/process"
 	"github.com/jasperan/waze-madrid-logger/tui/internal/screens"
 )
 
@@ -182,5 +184,84 @@ func TestAppQuitFromSplash(t *testing.T) {
 	// tea.Quit returns a tea.QuitMsg.
 	if _, ok := msg.(tea.QuitMsg); !ok {
 		t.Fatalf("expected tea.QuitMsg, got %T", msg)
+	}
+}
+
+func TestLocalAPIPort(t *testing.T) {
+	cases := []struct {
+		base string
+		want string
+	}{
+		{"http://localhost:5001", "5001"},
+		{"http://127.0.0.1:7000/api", "7000"},
+		{"not a url", "5000"},
+	}
+
+	for _, tc := range cases {
+		client := api.NewClient(tc.base)
+		if got := localAPIPort(client); got != tc.want {
+			t.Fatalf("localAPIPort(%q): expected %q, got %q", tc.base, tc.want, got)
+		}
+	}
+}
+
+func TestAppLaunchCollectionUsesClientPortAndRegions(t *testing.T) {
+	a, srv := newTestApp(t)
+	defer srv.Close()
+
+	a.client = api.NewClient("http://localhost:5009")
+
+	var gotFlaskPort string
+	var gotRegions []string
+
+	origStartFlask := startFlask
+	origStartCollector := startCollector
+	startFlask = func(_ *process.Manager, port string) error {
+		gotFlaskPort = port
+		return nil
+	}
+	startCollector = func(_ *process.Manager, regions []string) error {
+		gotRegions = append([]string{}, regions...)
+		return nil
+	}
+	defer func() {
+		startFlask = origStartFlask
+		startCollector = origStartCollector
+	}()
+
+	model, _ := a.Update(screens.LaunchCollectionMsg{Regions: []string{"europe", "asia"}})
+	app := model.(App)
+
+	if gotFlaskPort != "5009" {
+		t.Fatalf("expected StartFlask to use port 5009, got %q", gotFlaskPort)
+	}
+	if !reflect.DeepEqual(gotRegions, []string{"europe", "asia"}) {
+		t.Fatalf("expected regions [europe asia], got %v", gotRegions)
+	}
+	if app.screen != ScreenDashboard {
+		t.Fatalf("expected screen ScreenDashboard, got %v", app.screen)
+	}
+}
+
+func TestAppStartLocalServerMsgUsesClientPort(t *testing.T) {
+	a, srv := newTestApp(t)
+	defer srv.Close()
+
+	a.client = api.NewClient("http://localhost:5011")
+
+	var gotPort string
+	origStartFlask := startFlask
+	startFlask = func(_ *process.Manager, port string) error {
+		gotPort = port
+		return nil
+	}
+	defer func() { startFlask = origStartFlask }()
+
+	_, cmd := a.Update(screens.StartLocalServerMsg{})
+	if gotPort != "5011" {
+		t.Fatalf("expected StartFlask to use port 5011, got %q", gotPort)
+	}
+	if cmd == nil {
+		t.Fatal("expected splash re-init cmd after StartLocalServerMsg")
 	}
 }

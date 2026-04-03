@@ -56,6 +56,9 @@ pip install waze-logs
 # Clone and sync dependencies
 uv sync
 
+# Diagnose local setup first (recommended)
+uv run waze doctor
+
 # Run the CLI
 uv run waze start -b
 
@@ -63,6 +66,12 @@ uv run waze start -b
 ```
 
 That's it. The web UI shows a live map with events streaming in from around the world.
+
+If `:5000` is already in use on your machine, use the auto-port mode:
+
+```bash
+uv run waze start -b --auto-port
+```
 
 ## Development
 
@@ -144,8 +153,26 @@ The TUI can auto-launch the Flask server and collector from the Region Picker sc
 
 ```bash
 waze --help      # See all available commands
+waze doctor      # Diagnose config, ports, fallback mode, and API reachability
+waze briefing    # Generate a cross-region intelligence summary
 waze stop        # Stop the collector
 waze logs        # Watch live output
+```
+
+## Operator Workflow
+
+```bash
+# Diagnose the local environment before launching
+uv run waze doctor
+
+# Machine-readable diagnostics for scripts or CI
+uv run waze doctor --format json
+
+# Generate a cross-region summary of what matters now
+uv run waze briefing --format markdown --hours 24 --top-users 5
+
+# Start the web UI on the next free port if :5000 is already occupied
+uv run waze web --auto-port
 ```
 
 ## Privacy & Ethics

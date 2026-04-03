@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,6 +13,14 @@ import (
 	"github.com/jasperan/waze-madrid-logger/tui/internal/screens"
 	"github.com/jasperan/waze-madrid-logger/tui/internal/theme"
 )
+
+var startFlask = func(m *process.Manager, port string) error {
+	return m.StartFlask(port)
+}
+
+var startCollector = func(m *process.Manager, regions []string) error {
+	return m.StartCollector(regions)
+}
 
 // Screen identifies the active TUI screen.
 type Screen int
@@ -48,6 +57,17 @@ type App struct {
 	history     screens.HistoryModel
 
 	showHelp bool
+}
+
+func localAPIPort(client *api.Client) string {
+	if client == nil {
+		return "5000"
+	}
+	parsed, err := url.Parse(client.Base)
+	if err != nil || parsed.Port() == "" {
+		return "5000"
+	}
+	return parsed.Port()
 }
 
 // New creates the root application model.
@@ -116,10 +136,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case screens.LaunchCollectionMsg:
 		// Start Flask web server and the collector, then jump to dashboard.
-		_ = a.proc.StartFlask("5000")
-		_ = a.proc.StartCollector(msg.Regions)
+		port := localAPIPort(a.client)
+		_ = startFlask(a.proc, port)
+		_ = startCollector(a.proc, msg.Regions)
 		cmd := a.switchTo(ScreenDashboard)
 		return a, cmd
+
+	case screens.StartLocalServerMsg:
+		port := localAPIPort(a.client)
+		_ = startFlask(a.proc, port)
+		return a, a.splash.Init()
 
 	case SwitchScreenMsg:
 		cmd := a.switchTo(msg.Screen)

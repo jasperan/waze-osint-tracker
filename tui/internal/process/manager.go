@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+var execCommand = exec.Command
+
 // proc holds a named subprocess.
 type proc struct {
 	Name string
@@ -38,7 +40,7 @@ func (m *Manager) StartFlask(port string) error {
 		return nil
 	}
 
-	cmd := exec.Command("waze", "web", "--port", port)
+	cmd := execCommand("waze", "web", "--port", port)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -57,7 +59,7 @@ func (m *Manager) StartFlask(port string) error {
 	return nil
 }
 
-// StartCollector spawns `waze collect --regions region1 region2 ...` as a
+// StartCollector spawns `waze collect --region region1 --region region2 ...` as a
 // background subprocess. It is a no-op if the collector is already running.
 func (m *Manager) StartCollector(regions []string) error {
 	m.mu.Lock()
@@ -69,11 +71,12 @@ func (m *Manager) StartCollector(regions []string) error {
 
 	args := []string{"collect"}
 	if len(regions) > 0 {
-		args = append(args, "--regions")
-		args = append(args, regions...)
+		for _, region := range regions {
+			args = append(args, "--region", region)
+		}
 	}
 
-	cmd := exec.Command("waze", args...)
+	cmd := execCommand("waze", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

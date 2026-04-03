@@ -134,6 +134,24 @@ func TestSplashEnterWhenConnected(t *testing.T) {
 	}
 }
 
+func TestSplashStartServerShortcut(t *testing.T) {
+	srv, client := newStatsServer(t, api.Stats{})
+	defer srv.Close()
+
+	m := NewSplash(client)
+	m2, cmd := m.Update(keyRune('s'))
+	if m2.err != "Starting server..." {
+		t.Fatalf("expected start-server hint, got %q", m2.err)
+	}
+	if cmd == nil {
+		t.Fatal("expected cmd after pressing 's'")
+	}
+	msg := execCmd(cmd)
+	if _, ok := msg.(StartLocalServerMsg); !ok {
+		t.Fatalf("expected StartLocalServerMsg, got %T", msg)
+	}
+}
+
 // ── Regions ───────────────────────────────────────────────────────────────────
 
 func TestNewRegions(t *testing.T) {

@@ -137,6 +137,15 @@ def get_all_dbs():
     return dbs
 
 
+def close_dbs(dbs) -> None:
+    """Best-effort close for a list of ``(region, db)`` pairs."""
+    for _, db in dbs:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
 # === Worldwide Collection System ===
 
 # Status/checkpoint file paths
@@ -212,6 +221,16 @@ def clear_checkpoint():
             os.remove(CHECKPOINT_FILE)
     except Exception:
         pass
+
+
+def resolve_web_port(port: int, auto_port: bool) -> int:
+    """Return the requested port or the next available local port."""
+    if not auto_port:
+        return port
+
+    from ops_diagnostics import find_available_port
+
+    return find_available_port(port)
 
 
 from utils import generate_event_hash  # noqa: E402
@@ -945,8 +964,9 @@ class CLIWorldwideCollector:
 @cli.command()
 @click.option("--web", "-w", is_flag=True, help="Also start the web UI")
 @click.option("--port", "-p", default=5000, help="Web UI port (default: 5000)")
+@click.option("--auto-port", is_flag=True, help="Find a free port starting at --port")
 @click.option("--region", "-r", multiple=True, help="Specific regions to scan (can be repeated)")
-def collect(web, port, region):
+def collect(web, port, auto_port, region):
     """Start worldwide multi-threaded data collection.
 
     This runs the full worldwide collector which scans all continents
@@ -965,11 +985,14 @@ def collect(web, port, region):
         click.echo("Use 'waze stop --worldwide' to stop it")
         return
 
-    web_port = port if web else None
+    resolved_port = resolve_web_port(port, auto_port) if web else port
+    web_port = resolved_port if web else None
     selected_regions = list(region) if region else None
 
     click.echo("Starting worldwide collector...")
     if web_port:
+        if auto_port and resolved_port != port:
+            click.echo(f"Port {port} is busy, using {resolved_port} instead")
         click.echo(f"Web UI will be available at http://localhost:{web_port}")
 
     collector = CLIWorldwideCollector(web_port=web_port, regions=selected_regions)
@@ -1119,12 +1142,13 @@ def logs(lines, follow):
 @click.option("--web", "-w", is_flag=True, default=True, help="Start the web UI (default: enabled)")
 @click.option("--no-web", is_flag=True, help="Disable web UI")
 @click.option("--port", "-p", default=5000, help="Web UI port (default: 5000)")
+@click.option("--auto-port", is_flag=True, help="Find a free port starting at --port")
 @click.option("--background", "-b", is_flag=True, help="Run in background (daemonize)")
 @click.option("--region", "-r", multiple=True, help="Specific regions to scan (can be repeated)")
 @click.option(
     "--threads", "-t", default=4, help="Threads per region for parallel cell scanning (default: 4)"
 )
-def start(madrid, europe, web, no_web, port, background, region, threads):
+def start(madrid, europe, web, no_web, port, auto_port, background, region, threads):
     """Start the worldwide collector daemon.
 
     By default starts the worldwide multi-threaded collector with web UI.
@@ -1139,7 +1163,8 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
     """
     # Resolve web flag
     enable_web = web and not no_web
-    web_port = port if enable_web else None
+    resolved_port = resolve_web_port(port, auto_port) if enable_web else port
+    web_port = resolved_port if enable_web else None
 
     if background:
         import subprocess
@@ -1150,7 +1175,7 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
         elif europe:
             cmd.append("--europe")
         if enable_web:
-            cmd.extend(["--web", "--port", str(port)])
+            cmd.extend(["--web", "--port", str(resolved_port)])
         else:
             cmd.append("--no-web")
         for r in region:
@@ -1167,7 +1192,9 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
         )
         click.echo("Collector started in background")
         if enable_web:
-            click.echo(f"Web UI available at http://localhost:{port}")
+            if auto_port and resolved_port != port:
+                click.echo(f"Port {port} is busy, using {resolved_port} instead")
+            click.echo(f"Web UI available at http://localhost:{resolved_port}")
         click.echo("Use 'waze logs' to watch output or 'waze stop' to stop")
         return
 
@@ -1182,7 +1209,9 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
         click.echo("Starting Madrid collector...")
         collector = Collector(web_port=web_port)
         if enable_web:
-            click.echo(f"Web UI will be available at http://localhost:{port}")
+            if auto_port and resolved_port != port:
+                click.echo(f"Port {port} is busy, using {resolved_port} instead")
+            click.echo(f"Web UI will be available at http://localhost:{resolved_port}")
         collector.run()
     elif europe:
         # Legacy Europe collector
@@ -1207,7 +1236,9 @@ def start(madrid, europe, web, no_web, port, background, region, threads):
         selected_regions = list(region) if region else None
         click.echo(f"Starting worldwide collector with {threads} threads per region...")
         if enable_web:
-            click.echo(f"Web UI will be available at http://localhost:{port}")
+            if auto_port and resolved_port != port:
+                click.echo(f"Port {port} is busy, using {resolved_port} instead")
+            click.echo(f"Web UI will be available at http://localhost:{resolved_port}")
         collector = CLIWorldwideCollector(
             web_port=web_port, regions=selected_regions, threads_per_region=threads
         )
@@ -1394,6 +1425,36 @@ def status(show_all):
             click.echo("No data collected yet")
 
         click.echo("\nTip: Use 'waze status --all' to see all regional databases")
+
+
+@cli.command()
+@click.option("--port", "-p", default=5000, help="Port to inspect for local web UI availability")
+@click.option(
+    "--api-url",
+    default=None,
+    help="Explicit API base URL to probe (e.g. http://localhost:5001)",
+)
+@click.option(
+    "--live-check/--no-live-check",
+    default=True,
+    help="Probe the local API as part of diagnostics",
+)
+@click.option("--json", "json_output", is_flag=True, help="Shortcut for --format json")
+@click.option("--format", "fmt", type=click.Choice(["text", "json"]), default="text")
+def doctor(port, api_url, live_check, json_output, fmt):
+    """Diagnose local runtime readiness and recommend next steps."""
+    from ops_diagnostics import build_doctor_report, render_doctor_report
+
+    if json_output:
+        fmt = "json"
+
+    report = build_doctor_report(port=port, api_url=api_url, live_check=live_check)
+
+    if fmt == "json":
+        click.echo(json.dumps(report, indent=2))
+        return
+
+    click.echo(render_doctor_report(report))
 
 
 # === Data Exploration Commands ===
@@ -1779,18 +1840,22 @@ def daily(days, show_all):
 
 @cli.command()
 @click.option("--port", "-p", default=5000, help="Port to run the web UI on (default: 5000)")
-def web(port):
+@click.option("--auto-port", is_flag=True, help="Find a free port starting at --port")
+def web(port, auto_port):
     """Start the web visualization UI only (no collection).
 
     Use this to view collected data without running the collector.
     """
-    click.echo(f"Starting web UI at http://localhost:{port}")
+    resolved_port = resolve_web_port(port, auto_port)
+    if auto_port and resolved_port != port:
+        click.echo(f"Port {port} is busy, using {resolved_port} instead")
+    click.echo(f"Starting web UI at http://localhost:{resolved_port}")
     click.echo("Press Ctrl+C to stop")
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "web"))
     from web.app import app
 
-    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=resolved_port, debug=False, threaded=True)
 
 
 @cli.command()
@@ -1869,6 +1934,42 @@ def summary():
     for region, events, users in sorted(region_stats, key=lambda x: -x[1]):
         pct = events / total_events * 100 if total_events else 0
         click.echo(f"  {region.upper():10} {events:>10,} events  {users:>8,} users  ({pct:.1f}%)")
+
+
+@cli.command()
+@click.option("--hours", default=24, help="Recent activity window in hours")
+@click.option("--top-users", default=5, help="Number of users to highlight")
+@click.option("--top-events", default=5, help="Number of event types / freshest events to show")
+@click.option("--format", "fmt", type=click.Choice(["text", "json", "markdown"]), default="text")
+def briefing(hours, top_users, top_events, fmt):
+    """Generate a cross-region intelligence briefing."""
+    from briefing import (
+        build_briefing,
+        open_briefing_dbs,
+        render_briefing_markdown,
+        render_briefing_text,
+    )
+
+    dbs = open_briefing_dbs(Path(__file__).resolve().parent, load_config())
+    try:
+        briefing_data = build_briefing(
+            dbs,
+            status_file=STATUS_FILE,
+            recent_hours=max(hours, 1),
+            top_users=max(top_users, 1),
+            top_events=max(top_events, 1),
+        )
+    finally:
+        close_dbs(dbs)
+
+    if fmt == "json":
+        click.echo(json.dumps(briefing_data, indent=2))
+        return
+    if fmt == "markdown":
+        click.echo(render_briefing_markdown(briefing_data))
+        return
+
+    click.echo(render_briefing_text(briefing_data))
 
 
 @cli.command()

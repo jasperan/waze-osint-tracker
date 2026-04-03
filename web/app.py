@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis import get_user_profile
 from database import Database
+from ops_diagnostics import read_status_file
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,6 @@ STATUS_FILE = os.path.join(
 
 # Project root for config file discovery
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_STATUS_STALE_SECONDS = 600
 
 
 def _load_web_config():
@@ -622,26 +622,34 @@ def api_stream():
 def api_status():
     """Get current collector status."""
     try:
-        if os.path.exists(STATUS_FILE):
-            with open(STATUS_FILE, "r") as f:
-                status = json.load(f)
-            timestamp = status.get("timestamp")
-            if timestamp:
-                try:
-                    updated_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
-                    age = (datetime.now(timezone.utc) - updated_at).total_seconds()
-                    if age > _STATUS_STALE_SECONDS:
-                        status["status"] = "stale"
-                        status["stale"] = True
-                        status["message"] = "Collector status file is stale"
-                except ValueError:
-                    status["status"] = "stale"
-                    status["stale"] = True
-                    status["message"] = "Collector status timestamp is invalid"
-            return jsonify(status)
+        return jsonify(read_status_file(STATUS_FILE))
     except Exception:
         logger.warning("Failed to read collector status file")
     return jsonify({"status": "unknown", "message": "No collector status available"})
+
+
+@app.route("/api/briefing")
+def api_briefing():
+    """Get a high-signal cross-region intelligence briefing."""
+    from briefing import build_briefing, open_briefing_dbs
+
+    hours = max(1, request.args.get("hours", 24, type=int))
+    top_users = max(1, request.args.get("top_users", 5, type=int))
+    risk_users = max(1, request.args.get("risk_users", 3, type=int))
+    dbs = open_briefing_dbs(_PROJECT_ROOT, _load_web_config())
+    briefing = build_briefing(
+        dbs,
+        status_path=STATUS_FILE,
+        recent_hours=hours,
+        top_users=top_users,
+        risk_users=risk_users,
+    )
+    for _, db in dbs:
+        try:
+            db.close()
+        except Exception:
+            pass
+    return jsonify(briefing)
 
 
 @app.route("/api/recent-activity")

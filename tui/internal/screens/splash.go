@@ -20,6 +20,9 @@ type NavigateMsg struct {
 	Screen int
 }
 
+// StartLocalServerMsg asks the parent app to start the local Flask server.
+type StartLocalServerMsg struct{}
+
 // connectionCheckMsg carries the result of an API health check.
 type connectionCheckMsg struct {
 	ok    bool
@@ -88,6 +91,7 @@ func (m SplashModel) Update(msg tea.Msg) (SplashModel, tea.Cmd) {
 			return m, checkConnection(m.client)
 		case "s":
 			m.err = "Starting server..."
+			return m, func() tea.Msg { return StartLocalServerMsg{} }
 		}
 	}
 
