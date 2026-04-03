@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -144,6 +145,138 @@ def close_dbs(dbs) -> None:
             db.close()
         except Exception:
             pass
+
+
+def resolve_user_match(username: str):
+    """Resolve a username against all available databases."""
+    from user_lookup import find_user_match
+
+    dbs = get_all_dbs()
+    return find_user_match(username, dbs), dbs
+
+
+def _pid_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _read_pid_command(pid: int) -> str:
+    """Return a best-effort command line for *pid*."""
+    proc_cmdline = Path(f"/proc/{pid}/cmdline")
+    try:
+        raw = proc_cmdline.read_bytes()
+        if raw:
+            return raw.replace(b"\x00", b" ").decode("utf-8", errors="ignore").strip()
+    except OSError:
+        pass
+
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip()
+
+
+def _pid_matches_expected(
+    pid: int,
+    *,
+    all_markers: list[str] | tuple[str, ...] = (),
+    any_markers: list[str] | tuple[str, ...] = (),
+) -> bool:
+    """Return True when *pid* appears to belong to the expected collector process."""
+    command = _read_pid_command(pid)
+    if not command:
+        return False
+
+    normalized = command.lower()
+    if any(marker.lower() not in normalized for marker in all_markers):
+        return False
+    if any_markers and not any(marker.lower() in normalized for marker in any_markers):
+        return False
+    return True
+
+
+def _remove_pid_file(pid_file: str | None) -> None:
+    if not pid_file:
+        return
+    try:
+        if os.path.exists(pid_file):
+            os.remove(pid_file)
+    except OSError:
+        pass
+
+
+def _stop_pid(pid: int, label: str, pid_file: str | None = None) -> None:
+    """Stop a collector process, escalating if SIGTERM does not finish it."""
+    click.echo(f"Stopping {label} (PID {pid})...")
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        _remove_pid_file(pid_file)
+        click.echo("Process already exited")
+        return
+
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if not _pid_is_running(pid):
+            _remove_pid_file(pid_file)
+            click.echo("Stopped cleanly")
+            return
+        time.sleep(0.25)
+
+    click.echo("Process did not exit after SIGTERM; sending SIGKILL...")
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        _remove_pid_file(pid_file)
+        click.echo("Process already exited")
+        return
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if not _pid_is_running(pid):
+            _remove_pid_file(pid_file)
+            click.echo("Stopped after SIGKILL")
+            return
+        time.sleep(0.25)
+
+    click.echo("Process is still running after SIGKILL", err=True)
+
+
+def _stop_worldwide_pid(pid: int) -> None:
+    repo_root = str(Path(__file__).resolve().parent)
+    if not _pid_matches_expected(
+        pid,
+        all_markers=[repo_root],
+        any_markers=[" start", " collect"],
+    ):
+        _remove_pid_file(PID_FILE)
+        click.echo(
+            "Refusing to signal the PID from collector_cli.pid because it does not look like a "
+            "worldwide collector process.",
+            err=True,
+        )
+        return
+    _stop_pid(pid, "worldwide collector", PID_FILE)
+
+
+def _stop_script_pid(pid: int, label: str, pid_file: str, script_name: str) -> None:
+    script_path = str(Path(__file__).with_name(script_name).resolve())
+    if not _pid_matches_expected(pid, all_markers=[script_path]):
+        _remove_pid_file(pid_file)
+        click.echo(
+            f"Refusing to signal the PID from {pid_file} because it does not look like the "
+            f"expected {label} process.",
+            err=True,
+        )
+        return
+    _stop_pid(pid, label, pid_file)
 
 
 # === Worldwide Collection System ===
@@ -1260,9 +1393,7 @@ def stop(madrid, europe):
         if not pid:
             click.echo("Madrid collector is not running")
             return
-        click.echo(f"Stopping Madrid collector (PID {pid})...")
-        os.kill(pid, signal.SIGTERM)
-        click.echo("Stop signal sent")
+        _stop_script_pid(pid, "Madrid collector", "collector.pid", "collector.py")
     elif europe:
         from collector_europe import EuropeCollector
 
@@ -1270,22 +1401,16 @@ def stop(madrid, europe):
         if not pid:
             click.echo("Europe collector is not running")
             return
-        click.echo(f"Stopping Europe collector (PID {pid})...")
-        os.kill(pid, signal.SIGTERM)
-        click.echo("Stop signal sent")
+        _stop_script_pid(pid, "Europe collector", "collector_europe.pid", "collector_europe.py")
     else:
         # Default: stop worldwide first, then madrid if no worldwide running
         worldwide_pid = CLIWorldwideCollector.get_pid()
         madrid_pid = Collector.get_pid()
 
         if worldwide_pid:
-            click.echo(f"Stopping worldwide collector (PID {worldwide_pid})...")
-            os.kill(worldwide_pid, signal.SIGTERM)
-            click.echo("Stop signal sent")
+            _stop_worldwide_pid(worldwide_pid)
         elif madrid_pid:
-            click.echo(f"Stopping Madrid collector (PID {madrid_pid})...")
-            os.kill(madrid_pid, signal.SIGTERM)
-            click.echo("Stop signal sent")
+            _stop_script_pid(madrid_pid, "Madrid collector", "collector.pid", "collector.py")
         else:
             click.echo("No collector is running")
 
@@ -1668,38 +1793,43 @@ def profile(username):
     """Show detailed profile for a user."""
     from analysis import get_user_profile
 
-    db = get_db()
-    p = get_user_profile(db, username)
+    match, dbs = resolve_user_match(username)
+    try:
+        if not match:
+            click.echo(f"User '{username}' not found")
+            return
 
-    if not p:
-        click.echo(f"User '{username}' not found")
-        return
+        p = get_user_profile(match["db"], username)
+        if not p:
+            click.echo(f"User '{username}' not found")
+            return
 
-    click.echo(f"User: {p['username']}")
-    click.echo(f"Events: {p['event_count']}")
-    click.echo(f"First seen: {p['first_seen'][:19]}")
-    click.echo(f"Last seen: {p['last_seen'][:19]}")
-    click.echo(
-        f"Center location: {p['center_location']['lat']:.4f}, {p['center_location']['lon']:.4f}"
-    )
-
-    click.echo("\nReport types:")
-    for t, count in sorted(p["type_breakdown"].items(), key=lambda x: -x[1]):
-        click.echo(f"  {t}: {count}")
-
-    click.echo("\nRecent events:")
-    table = []
-    for e in p["events"][-10:]:
-        table.append(
-            [
-                e["timestamp_utc"][:19],
-                e["report_type"],
-                f"{e['latitude']:.4f}, {e['longitude']:.4f}",
-            ]
+        click.echo(f"User: {p['username']}")
+        click.echo(f"Region: {match['region']}")
+        click.echo(f"Events: {p['event_count']}")
+        click.echo(f"First seen: {p['first_seen'][:19]}")
+        click.echo(f"Last seen: {p['last_seen'][:19]}")
+        click.echo(
+            f"Center location: {p['center_location']['lat']:.4f}, {p['center_location']['lon']:.4f}"
         )
-    click.echo(tabulate(table, headers=["Time", "Type", "Location"]))
 
-    db.close()
+        click.echo("\nReport types:")
+        for t, count in sorted(p["type_breakdown"].items(), key=lambda x: -x[1]):
+            click.echo(f"  {t}: {count}")
+
+        click.echo("\nRecent events:")
+        table = []
+        for e in p["events"][-10:]:
+            table.append(
+                [
+                    e["timestamp_utc"][:19],
+                    e["report_type"],
+                    f"{e['latitude']:.4f}, {e['longitude']:.4f}",
+                ]
+            )
+        click.echo(tabulate(table, headers=["Time", "Type", "Location"]))
+    finally:
+        close_dbs(dbs)
 
 
 # === Export Commands ===
@@ -1771,24 +1901,38 @@ def report(username, fmt, output):
     """Generate an OSINT intelligence report for a user."""
     from report_generator import generate_user_report, render_report_html
 
-    db = get_db()
-    report_data = generate_user_report(username, db)
+    match, dbs = resolve_user_match(username)
+    fallback_db = None
+    try:
+        db = match["db"] if match else get_db()
+        if match is None:
+            fallback_db = db
 
-    if fmt == "json":
-        import json
+        report_data = generate_user_report(username, db)
+        if match:
+            report_data.setdefault("region", match["region"])
 
-        content = json.dumps(report_data, indent=2)
-    else:
-        content = render_report_html(report_data)
+        if fmt == "json":
+            import json
 
-    if output:
-        os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
-        with open(output, "w") as f:
-            f.write(content)
-        click.echo(f"Report saved to {output}")
-    else:
-        click.echo(content)
-    db.close()
+            content = json.dumps(report_data, indent=2)
+        else:
+            content = render_report_html(report_data)
+
+        if output:
+            os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
+            with open(output, "w") as f:
+                f.write(content)
+            click.echo(f"Report saved to {output}")
+        else:
+            click.echo(content)
+    finally:
+        close_dbs(dbs)
+        if fallback_db is not None:
+            try:
+                fallback_db.close()
+            except Exception:
+                pass
 
 
 # === Config Commands ===
@@ -2426,7 +2570,14 @@ def trips_cmd(username, since, classify, build, min_events, json_output):
         db.close()
         return
 
-    # Fetch events for user
+    db.close()
+    match, dbs = resolve_user_match(username)
+    if not match:
+        console.print(f"[dim]No events found for {username}[/dim]")
+        close_dbs(dbs)
+        return
+
+    db = match["db"]
     cursor = db.execute(
         "SELECT latitude, longitude, timestamp_ms, report_type "
         "FROM events WHERE username = ? ORDER BY timestamp_ms",
@@ -2450,7 +2601,7 @@ def trips_cmd(username, since, classify, build, min_events, json_output):
 
     if not events:
         console.print(f"[dim]No events found for {username}[/dim]")
-        db.close()
+        close_dbs(dbs)
         return
 
     # Get routines for classification
@@ -2467,16 +2618,16 @@ def trips_cmd(username, since, classify, build, min_events, json_output):
 
     if json_output:
         click.echo(json.dumps([t.to_dict() for t in trips], indent=2, default=str))
-        db.close()
+        close_dbs(dbs)
         return
 
     if not trips:
         console.print(f"[dim]No reconstructable trips for {username}[/dim]")
-        db.close()
+        close_dbs(dbs)
         return
 
     # Display trips table
-    table = Table(title=f"Trips for {username}", box=box.ROUNDED)
+    table = Table(title=f"Trips for {username} ({match['region']})", box=box.ROUNDED)
     table.add_column("ID", style="dim", max_width=10)
     table.add_column("Start", style="cyan")
     table.add_column("End", style="cyan")
@@ -2520,7 +2671,7 @@ def trips_cmd(username, since, classify, build, min_events, json_output):
         f"{summary['total_duration_hours']:.1f} hours[/info]"
     )
 
-    db.close()
+    close_dbs(dbs)
 
 
 def _build_all_trips(db, config, min_events, classify):
@@ -2660,7 +2811,14 @@ def privacy_score_cmd(username, json_output, batch, min_events):
         db.close()
         return
 
-    # Fetch events
+    db.close()
+    match, dbs = resolve_user_match(username)
+    if not match:
+        console.print(f"[error]No events found for {username}[/error]")
+        close_dbs(dbs)
+        return
+
+    db = match["db"]
     cursor = db.execute(
         "SELECT latitude, longitude, timestamp_ms, report_type "
         "FROM events WHERE username = ? ORDER BY timestamp_ms",
@@ -2680,10 +2838,12 @@ def privacy_score_cmd(username, json_output, batch, min_events):
 
     if not events:
         console.print(f"[error]No events found for {username}[/error]")
-        db.close()
+        close_dbs(dbs)
         return
 
-    console.print(f"[info]Analyzing {len(events)} events for {username}...[/info]")
+    console.print(
+        f"[info]Analyzing {len(events)} events for {username} from {match['region']}...[/info]"
+    )
 
     # Infer routines
     routines = None
@@ -2740,7 +2900,7 @@ def privacy_score_cmd(username, json_output, batch, min_events):
         console.print(Panel(report, title=f"Privacy Assessment: {username}", border_style=border))
 
     # Store in Oracle
-    if config.get("database_type") == "oracle":
+    if getattr(db, "db_type", "") == "oracle":
         try:
             db.execute(
                 """
@@ -2787,7 +2947,7 @@ def privacy_score_cmd(username, json_output, batch, min_events):
         except Exception:
             pass
 
-    db.close()
+    close_dbs(dbs)
 
 
 def _batch_privacy_scores(db, config, min_events):

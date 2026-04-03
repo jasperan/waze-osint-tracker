@@ -33,6 +33,7 @@ MAX_SSE_CLIENTS = 50
 
 # Stats cache (expensive query - cache for 5 minutes, warmed in background)
 _STATS_CACHE_TTL = 300
+_ORACLE_RETRY_COOLDOWN_SECONDS = 60
 
 
 class StatsCache(TypedDict):
@@ -42,6 +43,8 @@ class StatsCache(TypedDict):
 
 _stats_cache: StatsCache = {"data": None, "expires": 0.0}
 _stats_warming = threading.Event()
+_oracle_retry_blocked_until = 0.0
+_oracle_retry_last_error: str | None = None
 
 # Connection pool for SQLite databases — avoids opening/closing on every request.
 # Maps db_path -> Database instance.  Thread-safe because SQLite connections are
@@ -68,6 +71,33 @@ def _load_web_config():
     # Final fallback
     with open(os.path.join(_PROJECT_ROOT, "config.yaml")) as f:
         return yaml.safe_load(f)
+
+
+def _get_oracle_database(config: dict[str, Any]):
+    """Return an Oracle database when configured and currently reachable."""
+    global _oracle_retry_blocked_until, _oracle_retry_last_error
+
+    if config.get("database_type") != "oracle":
+        return None
+
+    if time.time() < _oracle_retry_blocked_until:
+        return None
+
+    try:
+        from database_oracle import Database as OracleDatabase
+
+        db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
+    except Exception as exc:
+        _oracle_retry_blocked_until = time.time() + _ORACLE_RETRY_COOLDOWN_SECONDS
+        _oracle_retry_last_error = str(exc)
+        if not config.get("sqlite_fallback", False):
+            raise
+        logger.warning("Oracle unavailable (%s), falling back to SQLite", exc)
+        return None
+
+    _oracle_retry_blocked_until = 0.0
+    _oracle_retry_last_error = None
+    return db
 
 
 # Database paths - all regional databases (SQLite fallback)
@@ -111,15 +141,9 @@ def get_db(region=None):
     except Exception:
         config = {}
 
-    if config.get("database_type") == "oracle":
-        try:
-            from database_oracle import Database as OracleDatabase
-
-            return OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
-        except Exception as exc:
-            if not config.get("sqlite_fallback", False):
-                raise
-            logger.warning("Oracle unavailable (%s), falling back to SQLite", exc)
+    oracle_db = _get_oracle_database(config)
+    if oracle_db is not None:
+        return oracle_db
 
     if region and region in DB_PATHS:
         return _get_pooled_sqlite(DB_PATHS[region])
@@ -138,16 +162,9 @@ def get_all_dbs():
     except Exception:
         config = {}
 
-    if config.get("database_type") == "oracle":
-        try:
-            from database_oracle import Database as OracleDatabase
-
-            db = OracleDatabase(config["oracle_dsn"], config.get("oracle_schema", "waze"))
-            return [("all", db)]
-        except Exception as exc:
-            if not config.get("sqlite_fallback", False):
-                raise
-            logger.warning("Oracle unavailable (%s), falling back to SQLite", exc)
+    oracle_db = _get_oracle_database(config)
+    if oracle_db is not None:
+        return [("all", oracle_db)]
 
     dbs = []
     for region, path in DB_PATHS.items():
@@ -156,6 +173,27 @@ def get_all_dbs():
                 dbs.append((region, _get_pooled_sqlite(path)))
             except Exception:
                 logger.warning("Failed to open database for region %s", region)
+    return dbs
+
+
+def get_stats_dbs():
+    """Get isolated DB connections for stats warmup/refresh work."""
+    try:
+        config = _load_web_config()
+    except Exception:
+        config = {}
+
+    oracle_db = _get_oracle_database(config)
+    if oracle_db is not None:
+        return [("all", oracle_db)]
+
+    dbs = []
+    for region, path in DB_PATHS.items():
+        if os.path.exists(path):
+            try:
+                dbs.append((region, Database(path, check_same_thread=False)))
+            except Exception:
+                logger.warning("Failed to open stats database for region %s", region)
     return dbs
 
 
@@ -170,6 +208,13 @@ def query_all_dbs(query_func):
         except Exception as e:
             print(f"Error querying {region}: {e}")
     return all_results
+
+
+def resolve_user_match(username: str):
+    """Resolve a user across all available databases."""
+    from user_lookup import find_user_match
+
+    return find_user_match(username, get_all_dbs())
 
 
 @app.route("/")
@@ -203,23 +248,30 @@ def _query_region_stats(region_db_pair):
 
 def _compute_stats():
     """Compute stats from all DBs in parallel, update cache."""
-    dbs = get_all_dbs()
+    dbs = get_stats_dbs()
     total_events = 0
     total_unique_users = 0
     first_event = None
     last_event = None
 
-    with ThreadPoolExecutor(max_workers=len(dbs) or 1) as pool:
-        results = pool.map(_query_region_stats, dbs)
+    try:
+        with ThreadPoolExecutor(max_workers=len(dbs) or 1) as pool:
+            results = pool.map(_query_region_stats, dbs)
 
-    for r in results:
-        total_events += r["count"]
-        total_unique_users += r["users"]
-        fe, le = r["first_event"], r["last_event"]
-        if fe and (first_event is None or fe < first_event):
-            first_event = fe
-        if le and (last_event is None or le > last_event):
-            last_event = le
+        for r in results:
+            total_events += r["count"]
+            total_unique_users += r["users"]
+            fe, le = r["first_event"], r["last_event"]
+            if fe and (first_event is None or fe < first_event):
+                first_event = fe
+            if le and (last_event is None or le > last_event):
+                last_event = le
+    finally:
+        for _, db in dbs:
+            try:
+                db.close()
+            except Exception:
+                pass
 
     result = {
         "total_events": total_events,
@@ -244,6 +296,13 @@ def _warm_stats_cache():
         _stats_warming.clear()
 
 
+def _schedule_stats_warmup() -> None:
+    """Kick off stats cache warmup once without blocking the request path."""
+    if _stats_warming.is_set():
+        return
+    threading.Thread(target=_warm_stats_cache, daemon=True).start()
+
+
 @app.route("/api/stats")
 def api_stats():
     """Get summary statistics from all databases (cached, parallel queries)."""
@@ -257,8 +316,10 @@ def api_stats():
             return jsonify(_stats_cache["data"])
         return jsonify({"total_events": 0, "unique_users": 0, "message": "Computing stats..."})
 
-    result = _compute_stats()
-    return jsonify(result)
+    _schedule_stats_warmup()
+    if _stats_cache["data"]:
+        return jsonify(_stats_cache["data"])
+    return jsonify({"total_events": 0, "unique_users": 0, "message": "Computing stats..."})
 
 
 @app.route("/api/events")
@@ -428,14 +489,18 @@ def api_heatmap():
 @app.route("/api/user/<username>")
 def api_user(username):
     """Get user profile and events."""
-    db = get_db()
-    profile = get_user_profile(db, username)
+    match = resolve_user_match(username)
+    if not match:
+        return jsonify({"error": "User not found"}), 404
+
+    profile = get_user_profile(match["db"], username)
 
     if not profile:
         return jsonify({"error": "User not found"}), 404
 
     # Remove full events list from profile (too large)
     profile["events"] = profile["events"][-50:]  # Last 50 only
+    profile["region"] = match["region"]
     return jsonify(profile)
 
 
@@ -913,8 +978,11 @@ def api_trips(username):
     limit = request.args.get("limit", 50, type=int)
     classify = request.args.get("classify", "true").lower() == "true"
 
-    db = get_db()
-    cursor = db.execute(
+    match = resolve_user_match(username)
+    if not match:
+        return jsonify({"error": "No events found", "trips": []}), 404
+
+    cursor = match["db"].execute(
         "SELECT latitude, longitude, timestamp_ms, report_type "
         "FROM events WHERE username = ? ORDER BY timestamp_ms",
         (username,),
@@ -956,6 +1024,7 @@ def api_trips(username):
     return jsonify(
         {
             "username": username,
+            "region": match["region"],
             "trips": [t.to_dict() for t in trips[:limit]],
             "summary": get_trip_summary(trips),
         }
@@ -968,7 +1037,11 @@ def api_trips(username):
 @app.route("/api/privacy-score/<username>")
 def api_privacy_score(username):
     """Get full privacy risk score breakdown for a user."""
-    db = get_db()
+    match = resolve_user_match(username)
+    if not match:
+        return jsonify({"error": "User not found"}), 404
+
+    db = match["db"]
     cursor = db.execute(
         "SELECT latitude, longitude, timestamp_ms, report_type "
         "FROM events WHERE username = ? ORDER BY timestamp_ms",
@@ -1035,6 +1108,7 @@ def api_privacy_score(username):
     )
     result["username"] = username
     result["event_count"] = len(events)
+    result["region"] = match["region"]
     return jsonify(result)
 
 
@@ -1320,8 +1394,11 @@ def api_report(username):
     from report_generator import generate_user_report, render_report_html
 
     fmt = request.args.get("format", "html")
-    db = get_db()
+    match = resolve_user_match(username)
+    db = match["db"] if match else get_db()
     report = generate_user_report(username, db)
+    if match:
+        report.setdefault("region", match["region"])
 
     if fmt == "json":
         return jsonify(report)
