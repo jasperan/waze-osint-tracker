@@ -40,9 +40,25 @@ dogfood-output/
 
 
 # OpenCode-generated documentation (local reference only)
+IMPLEMENTATION.md
+*_IMPLEMENTATION.md
 TESTING_REPORT.md
 AGENT_HARNESS_ANNEX.md
 SKILLS_EXECUTION_SUMMARY.md
+PLAN.md
+SUMMARY.md
+REPORT.md
+FEATURES.md
+ENHANCEMENTS.md
+*_PLAN.md
+*_SUMMARY.md
+*_REPORT.md
+*_FEATURES.md
+*_ENHANCEMENTS.md
+PRD*.md
+TEST-SPEC*.md
+AUTOPILOT-*.md
+RALPLAN-*.md
 
 # Generated documentation
 docs/plans/

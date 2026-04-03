@@ -1457,6 +1457,65 @@ def doctor(port, api_url, live_check, json_output, fmt):
     click.echo(render_doctor_report(report))
 
 
+@cli.command()
+@click.option(
+    "--port",
+    "-p",
+    default=5000,
+    help="Port to use when launching the local web UI",
+)
+@click.option(
+    "--auto-port/--no-auto-port",
+    default=True,
+    help="Find a free port starting at --port before launching the web UI",
+)
+@click.option(
+    "--check-tui/--no-check-tui",
+    default=False,
+    help="Also build and launch-check the TUI",
+)
+@click.option(
+    "--output",
+    type=click.Path(),
+    default=None,
+    help="Optional file path for the report",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["text", "json", "markdown"]),
+    default="text",
+)
+def smoke(port, auto_port, check_tui, output, fmt):
+    """Run a bounded README-style smoke walkthrough."""
+    from smoke_test import (
+        build_smoke_report,
+        render_smoke_report,
+        render_smoke_report_markdown,
+        save_smoke_report,
+    )
+
+    report = build_smoke_report(
+        project_root=Path(__file__).resolve().parent,
+        port=port,
+        auto_port=auto_port,
+        include_tui=check_tui,
+    )
+
+    if output:
+        save_smoke_report(report, output, fmt)
+
+    if fmt == "json":
+        click.echo(json.dumps(report, indent=2))
+    elif fmt == "markdown":
+        click.echo(render_smoke_report_markdown(report))
+    else:
+        click.echo(render_smoke_report(report))
+
+    if not report["ok"]:
+        raise click.ClickException("Smoke walkthrough reported failures.")
+
+
 # === Data Exploration Commands ===
 
 
