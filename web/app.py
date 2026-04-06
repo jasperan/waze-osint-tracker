@@ -807,24 +807,40 @@ def status_monitor_thread():
                                 (last_id,),
                             ).fetchall()
 
+                            batch_for_anomaly = []
                             for event_row in new_events:
-                                event_data = {
-                                    "type": "new_event",
-                                    "event": {
-                                        "id": f"{region}_{event_row['id']}",
-                                        "username": event_row["username"],
-                                        "latitude": event_row["latitude"],
-                                        "longitude": event_row["longitude"],
-                                        "timestamp": event_row["timestamp_utc"],
-                                        "report_type": event_row["report_type"],
-                                        "subtype": event_row["subtype"],
-                                        "grid_cell": event_row["grid_cell"]
-                                        if "grid_cell" in event_row.keys()
-                                        else None,
-                                        "region": region,
-                                    },
+                                ev = {
+                                    "id": f"{region}_{event_row['id']}",
+                                    "username": event_row["username"],
+                                    "latitude": event_row["latitude"],
+                                    "longitude": event_row["longitude"],
+                                    "timestamp": event_row["timestamp_utc"],
+                                    "report_type": event_row["report_type"],
+                                    "subtype": event_row["subtype"],
+                                    "grid_cell": event_row["grid_cell"]
+                                    if "grid_cell" in event_row.keys()
+                                    else None,
+                                    "region": region,
                                 }
+                                # Convert timestamp to timestamp_ms for anomaly detection
+                                try:
+                                    from datetime import datetime
+
+                                    _dt = datetime.fromisoformat(event_row["timestamp_utc"])
+                                    ev["timestamp_ms"] = int(_dt.timestamp() * 1000)
+                                except Exception:
+                                    pass
+                                event_data = {"type": "new_event", "event": ev}
                                 broadcast_event(event_data)
+                                batch_for_anomaly.append(ev)
+
+                            # Run anomaly detection on the new batch
+                            try:
+                                anomaly_alerts = _anomaly_feed.check_batch(batch_for_anomaly)
+                                for alert in anomaly_alerts:
+                                    broadcast_event({"type": "anomaly", "alert": alert})
+                            except Exception:
+                                logger.debug("Anomaly feed error for %s", region)
 
                             last_event_ids[region] = current_max
                 except Exception:
@@ -1420,6 +1436,19 @@ def api_encounters_schedule():
         schedule = [h for h in schedule if h.get("hour") == hour]
 
     return jsonify({"schedule": schedule[:limit]})
+
+
+# ---------------------------------------------------------------------------
+# Anomaly Feed endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/anomalies")
+def api_anomalies():
+    """Return recent anomaly alerts."""
+    limit = min(request.args.get("limit", 100, type=int), 500)
+    anomalies = _anomaly_feed.get_recent(limit)
+    return jsonify({"anomalies": anomalies, "count": len(anomalies)})
 
 
 # ---------------------------------------------------------------------------

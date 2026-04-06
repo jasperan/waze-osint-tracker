@@ -231,6 +231,14 @@ WIDGET_CONTENT['encounter-map'] = () => `
   <div id="encounter-info" style="padding:4px 8px;font-size:0.7rem;color:var(--text-secondary)">Loading encounter data...</div>
 `;
 
+WIDGET_CONTENT['anomaly-feed'] = () => `
+  <div class="anomaly-summary" id="anomaly-summary" style="display:flex;gap:12px;padding:4px 8px;font-size:0.7rem;border-bottom:1px solid var(--border)">
+    <span style="color:var(--text-secondary)">Alerts: <strong id="anomaly-count" style="color:var(--primary)">0</strong></span>
+    <span style="color:var(--text-secondary)">Avg Score: <strong id="anomaly-avg" style="color:var(--text-primary)">--</strong></span>
+  </div>
+  <div class="anomaly-items" id="anomaly-items" style="overflow-y:auto;max-height:400px;padding:4px"></div>
+`;
+
 // === Deck Preset System ===
 
 const DECK_PRESETS = {
@@ -243,6 +251,7 @@ const DECK_PRESETS = {
             { id: 'display', title: 'Display', x: 9, y: 0, w: 3, h: 4 },
             { id: 'collector', title: 'Collector Status', x: 9, y: 4, w: 3, h: 5 },
             { id: 'alerts', title: 'System Alerts', x: 9, y: 9, w: 3, h: 4 },
+            { id: 'anomaly-feed', title: 'Anomaly Feed', x: 3, y: 0, w: 6, h: 6 },
         ],
         layers: ['heatmap'],
         mapView: { center: [45, 10], zoom: 4 },
@@ -371,6 +380,7 @@ function switchDeck(deckKey) {
     if (deck.widgets.some(w => w.id === 'detail-map')) initDetailMap();
     if (deck.widgets.some(w => w.id === 'social-graph') && window.WazeDash?.socialGraph) window.WazeDash.socialGraph.init('social-graph-container');
     if (deck.widgets.some(w => w.id === 'encounter-map') && window.WazeDash?.encounterMap) window.WazeDash.encounterMap.init('encounter-controls');
+    if (deck.widgets.some(w => w.id === 'anomaly-feed') && window.WazeDash?.anomalyFeed) window.WazeDash.anomalyFeed.init('anomaly-items');
 
     // Re-render Leaflet map after GridStack layout changes
     setTimeout(() => map.invalidateSize(), 200);

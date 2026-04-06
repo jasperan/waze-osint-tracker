@@ -1277,3 +1277,40 @@ body {
 .encounter-popup .ep-users { color: var(--primary); font-weight: 600; }
 .encounter-popup .ep-prob { color: var(--accent-green); }
 .encounter-popup .ep-time { color: var(--text-secondary); }
+
+/* === Anomaly Feed Widget === */
+.anomaly-card {
+    padding: 6px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+    border-left: 3px solid var(--border);
+    background: var(--bg-surface);
+    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.anomaly-card.severity-low { border-left-color: var(--accent-green); }
+.anomaly-card.severity-medium { border-left-color: var(--accent-yellow); }
+.anomaly-card.severity-high { border-left-color: var(--accent-red); }
+.anomaly-score {
+    font-weight: 700;
+    min-width: 28px;
+    text-align: center;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+}
+.anomaly-score.low { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
+.anomaly-score.medium { background: rgba(251, 191, 36, 0.15); color: var(--accent-yellow); }
+.anomaly-score.high { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
+.anomaly-user { color: var(--primary); font-weight: 500; }
+.anomaly-type { color: var(--text-secondary); font-size: 0.65rem; text-transform: uppercase; }
+.anomaly-time { color: var(--text-muted); font-size: 0.63rem; margin-left: auto; }
+.anomaly-geofence {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--secondary);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.6rem;
+}
