@@ -152,12 +152,60 @@ cd tui && make build
 
 The TUI can auto-launch the Flask server and collector from the Region Picker screen (press `Enter` after selecting regions).
 
+## Intelligence Visualization
+
+The dashboard ships with 4 intelligence fusion layers that wire 12+ backend analysis modules into interactive visualizations. Zero new dependencies; all frontend via CDN.
+
+> View the full feature showcase: open [`frontend-slides.html`](frontend-slides.html) in a browser.
+
+### Social Network Graph
+
+D3.js force-directed graph showing user relationships inferred from co-occurrence data. Nodes colored by community, edges by relationship type (CONVOY, SAME_PERSON, SIMILAR_ROUTINE). Click any node to zoom into its ego network.
+
+![User Intelligence Dashboard](img/web-intel-dashboard.png)
+
+### Real-time Anomaly Feed
+
+SSE-streamed anomaly detection with severity coloring (green/amber/red). Micro-batch adapter runs anomaly scoring every 2 seconds during collection, cross-references geofence zones.
+
+![Live Dashboard with Anomaly Feed](img/web-dashboard-live.png)
+
+### Encounter Prediction Map
+
+Leaflet heatmap overlay showing where and when users are predicted to meet. Day-of-week selector and hour slider filter the 168-bin prediction space.
+
+### OSINT Dossier Export
+
+Self-contained HTML intelligence report fusing all modules: privacy score (6 sub-scores), trip history, social connections, temporal fingerprint (7x24 heatmap), anomaly history, and AI narrative. Export via CLI or web API.
+
+```bash
+# Generate a complete intelligence dossier
+waze dossier <username> --output report.html
+
+# Or via API
+# GET http://localhost:5000/api/report/<username>
+# GET http://localhost:5000/api/report/<username>?format=json
+```
+
+![OSINT Dossier Report](img/web-dossier-report.png)
+
+### New API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/social-graph?limit=200` | Full social network (nodes + edges + communities) |
+| `GET /api/social-graph/<user>` | Ego network for a specific user |
+| `GET /api/encounters/schedule?day=0&hour=8` | Encounter predictions by day/hour |
+| `GET /api/anomalies?limit=100` | Recent anomaly alerts with scores |
+| `GET /api/report/<user>` | Full OSINT dossier (HTML or JSON) |
+
 ## Additional Commands
 
 ```bash
 waze --help      # See all available commands
 waze doctor      # Diagnose config, ports, fallback mode, and API reachability
 waze briefing    # Generate a cross-region intelligence summary
+waze dossier     # Generate OSINT dossier for a user
 waze smoke       # Run a README-style local CLI/API/TUI walkthrough
 waze stop        # Stop the collector
 waze logs        # Watch live output
@@ -287,25 +335,23 @@ $ waze logs
 
 ## Frontend Design
 
+The dashboard uses a **Dark Map Intelligence** aesthetic with amber/gold accents on deep blue backgrounds. Open [`frontend-slides.html`](frontend-slides.html) for a full visual showcase of all features.
+
 ### UI Screenshots
 
-The Waze Logger dashboard features a **Dark Map Intelligence** aesthetic with amber/gold accents on deep blue backgrounds.
+#### Live Collection (Anomaly Feed + Map)
+![Live Dashboard](img/web-dashboard-live.png)
 
-#### Main Dashboard
-![Dashboard](assets/screenshots/dashboard.png)
-*Real-time map view with event markers and statistics sidebar*
+#### User Intelligence (Social Graph + Encounters)
+![Intel Dashboard](img/web-intel-dashboard.png)
 
-#### Event Details
-![Events](assets/screenshots/events.png)
-*Detailed view of traffic events with filtering options*
+#### OSINT Dossier Report
+![Dossier](img/web-dossier-report.png)
 
-#### User Tracking
-![Users](assets/screenshots/users.png)
-*Tracked users panel with movement patterns*
-
-#### Statistics Panel
-![Stats](assets/screenshots/stats.png)
-*Data analytics and visualization charts*
+#### TUI Screens
+| Splash | Dashboard | Investigation | Regions |
+|--------|-----------|---------------|---------|
+| ![Splash](img/tui/tui-splash.png) | ![Dashboard](img/tui/tui-dashboard.png) | ![Investigation](img/tui/tui-investigation.png) | ![Regions](img/tui/tui-regions.png) |
 
 ### Design System
 
@@ -313,9 +359,10 @@ The Waze Logger dashboard features a **Dark Map Intelligence** aesthetic with am
 |-----------|-------------|
 | **Color Palette** | Amber/gold (#E8A817) on deep navy (#06080C) |
 | **Typography** | Instrument Sans for UI, IBM Plex Mono for data |
-| **Layout** | Split-pane: map (main) + sidebar (data) |
-| **Map Style** | Dark-themed Leaflet with custom markers |
-| **Glass Effects** | Translucent panels with backdrop blur |
+| **Layout** | GridStack widget system with draggable/resizable panels |
+| **Map Style** | Dark-themed Leaflet with heatmap + marker layers |
+| **Visualization** | D3.js force graphs, Leaflet heatmaps, SSE feeds |
+| **TUI** | Go Bubble Tea with matching gold palette |
 
 ### Key UI Components
 

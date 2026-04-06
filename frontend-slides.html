@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waze OSINT Tracker — Intelligence Fusion Features</title>
+<style>
+  :root {
+    --bg: #06080c; --surface: #0c1017; --elevated: #131820;
+    --primary: #e8a817; --dim: #b8860b; --blue: #3b82f6;
+    --green: #34d399; --red: #f87171; --yellow: #fbbf24;
+    --text: #e8e4dc; --text2: #8b9ab5; --muted: #4e5d73;
+    --border: rgba(232,168,23,0.12);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,sans-serif; background:var(--bg); color:var(--text); }
+  .slide { min-height:100vh; padding:60px 80px; display:flex; flex-direction:column; justify-content:center; border-bottom:1px solid var(--border); }
+  .slide-number { font-size:0.7rem; color:var(--muted); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:12px; }
+  h1 { font-size:3.2rem; font-weight:700; color:var(--primary); line-height:1.1; text-shadow:0 0 60px rgba(232,168,23,0.2); }
+  h2 { font-size:2rem; font-weight:600; color:var(--primary); margin-bottom:16px; }
+  h3 { font-size:1.1rem; font-weight:600; color:var(--text); margin-bottom:8px; }
+  .subtitle { font-size:1.3rem; color:var(--text2); margin-top:12px; max-width:700px; line-height:1.5; }
+  .tag { display:inline-block; background:rgba(232,168,23,0.1); color:var(--primary); padding:4px 12px; border-radius:20px; font-size:0.75rem; font-weight:600; margin:4px 4px 4px 0; border:1px solid rgba(232,168,23,0.2); }
+  .tag.blue { background:rgba(59,130,246,0.1); color:var(--blue); border-color:rgba(59,130,246,0.2); }
+  .tag.green { background:rgba(52,211,153,0.1); color:var(--green); border-color:rgba(52,211,153,0.2); }
+  .tag.red { background:rgba(248,113,113,0.1); color:var(--red); border-color:rgba(248,113,113,0.2); }
+  .grid { display:grid; gap:32px; margin-top:32px; }
+  .grid-2 { grid-template-columns:1fr 1fr; }
+  .grid-3 { grid-template-columns:1fr 1fr 1fr; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; }
+  .card:hover { border-color:rgba(232,168,23,0.3); }
+  .card-icon { font-size:2rem; margin-bottom:12px; }
+  .card p { color:var(--text2); font-size:0.9rem; line-height:1.6; }
+  .metric { text-align:center; }
+  .metric .value { font-size:3rem; font-weight:700; color:var(--primary); }
+  .metric .label { font-size:0.8rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.15em; margin-top:4px; }
+  .screenshot { border-radius:8px; border:1px solid var(--border); max-width:100%; margin-top:16px; box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+  .feature-header { display:flex; align-items:center; gap:16px; margin-bottom:24px; }
+  .feature-badge { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; }
+  .feature-badge.gold { background:rgba(232,168,23,0.15); }
+  .feature-badge.blue { background:rgba(59,130,246,0.15); }
+  .feature-badge.red { background:rgba(248,113,113,0.15); }
+  .feature-badge.green { background:rgba(52,211,153,0.15); }
+  ul { list-style:none; padding:0; }
+  ul li { padding:6px 0; color:var(--text2); font-size:0.9rem; }
+  ul li::before { content:"→ "; color:var(--primary); font-weight:600; }
+  .api-block { background:var(--elevated); border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-family:'IBM Plex Mono',monospace; font-size:0.8rem; color:var(--green); margin-top:8px; }
+  .divider { width:60px; height:3px; background:var(--primary); border-radius:2px; margin:20px 0; }
+  .footer { text-align:center; padding:40px; color:var(--muted); font-size:0.8rem; }
+  img.tui-shot { border-radius:8px; border:1px solid var(--border); max-width:100%; box-shadow:0 4px 24px rgba(0,0,0,0.5); }
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide" style="text-align:center;align-items:center">
+  <div class="slide-number">Waze OSINT Tracker v1.3.0</div>
+  <h1>Intelligence Fusion<br>Features</h1>
+  <p class="subtitle" style="text-align:center">Four new visualization layers that connect 12+ disconnected intelligence modules into interactive, real-time experiences across web and terminal interfaces.</p>
+  <div style="margin-top:24px">
+    <span class="tag">D3.js Social Graph</span>
+    <span class="tag blue">Encounter Heatmap</span>
+    <span class="tag red">Anomaly Feed</span>
+    <span class="tag green">OSINT Dossier</span>
+  </div>
+  <div class="grid grid-3" style="margin-top:48px;max-width:600px">
+    <div class="metric"><div class="value">489</div><div class="label">Tests Passing</div></div>
+    <div class="metric"><div class="value">12+</div><div class="label">Intel Modules Wired</div></div>
+    <div class="metric"><div class="value">0</div><div class="label">New Dependencies</div></div>
+  </div>
+</div>
+
+<!-- Slide 2: Architecture Overview -->
+<div class="slide">
+  <div class="slide-number">01 / Architecture</div>
+  <h2>Intelligence Module Connectivity</h2>
+  <p class="subtitle">Before: 12+ modules computing sophisticated analysis with zero visualization. After: every module wired to interactive frontend.</p>
+  <div class="grid grid-2" style="margin-top:32px">
+    <div class="card">
+      <h3>Backend Modules (already existed)</h3>
+      <ul>
+        <li>social_graph.py — force graph, communities, ego networks</li>
+        <li>encounter_prediction.py — meeting probability, hotspots</li>
+        <li>anomaly_detection.py — time/location/frequency scoring</li>
+        <li>temporal_fingerprint.py — 168-bin weekly histograms</li>
+        <li>privacy_score.py — 6-subscore risk assessment</li>
+        <li>trip_reconstruction.py — event-to-trip segmentation</li>
+        <li>geofence.py — zone-based containment</li>
+        <li>intel_vectors.py — 44-dim behavioral fingerprints</li>
+        <li>intel_routines.py — DBSCAN home/work clustering</li>
+        <li>intel_combined.py — vector + graph fusion</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>New Frontend Layers (this release)</h3>
+      <ul>
+        <li>social-graph.js — D3.js force-directed graph widget</li>
+        <li>encounter-map.js — Leaflet heatmap with time slider</li>
+        <li>anomaly-feed.js — SSE-connected real-time alert stream</li>
+        <li>dossier_builder.py — fusion orchestrator for all modules</li>
+        <li>dossier.html — self-contained Jinja2 report template</li>
+        <li>anomaly_feed.py — micro-batch streaming adapter</li>
+      </ul>
+      <div class="divider"></div>
+      <p style="font-size:0.8rem;color:var(--muted)">Zero new Python dependencies. All frontend via CDN (D3.js, Leaflet, Chart.js). No database schema changes.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: Social Graph -->
+<div class="slide">
+  <div class="slide-number">02 / Feature</div>
+  <div class="feature-header">
+    <div class="feature-badge gold">🔗</div>
+    <div>
+      <h2 style="margin-bottom:0">Interactive Social Graph</h2>
+      <p style="color:var(--text2);font-size:0.9rem">D3.js force-directed graph with community detection and ego networks</p>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <div>
+      <div class="card">
+        <h3>Capabilities</h3>
+        <ul>
+          <li>Nodes colored by community (label propagation detection)</li>
+          <li>Node size scaled by event count (sqrt scale)</li>
+          <li>Edge thickness by co-occurrence weight</li>
+          <li>Edge color by relationship type (CONVOY, SAME_PERSON, etc.)</li>
+          <li>Click any node to zoom into ego network (2-hop BFS)</li>
+          <li>Tooltip: username, event count, top report type, community ID</li>
+          <li>200-node performance guard with "load more"</li>
+          <li>ResizeObserver for responsive container fitting</li>
+        </ul>
+      </div>
+      <div class="api-block">
+        GET /api/social-graph?limit=200<br>
+        GET /api/social-graph/&lt;username&gt;
+      </div>
+    </div>
+    <div>
+      <img src="img/web-intel-dashboard.png" class="screenshot" alt="Social Graph Widget">
+    </div>
+  </div>
+</div>
+
+<!-- Slide 4: Encounter Map -->
+<div class="slide">
+  <div class="slide-number">03 / Feature</div>
+  <div class="feature-header">
+    <div class="feature-badge blue">📍</div>
+    <div>
+      <h2 style="margin-bottom:0">Encounter Prediction Map</h2>
+      <p style="color:var(--text2);font-size:0.9rem">Leaflet heatmap overlay with 168-bin temporal controls</p>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <div>
+      <img src="img/web-intel-dashboard.png" class="screenshot" alt="Encounter Predictions">
+    </div>
+    <div>
+      <div class="card">
+        <h3>Capabilities</h3>
+        <ul>
+          <li>Heatmap intensity = encounter probability (0-1)</li>
+          <li>Day-of-week selector (Mon-Sun or All)</li>
+          <li>Hour slider (0-23 or All) for temporal filtering</li>
+          <li>Click hotspot markers for: users, probability %, evidence</li>
+          <li>Toggle visibility on/off without destroying data</li>
+          <li>Wired to encounter_prediction + temporal_fingerprint modules</li>
+        </ul>
+      </div>
+      <div class="api-block">
+        GET /api/encounters/schedule?day=0&amp;hour=8&amp;limit=500<br>
+        GET /api/encounters/hotspots<br>
+        GET /api/encounters/&lt;user_a&gt;/&lt;user_b&gt;
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 5: Anomaly Feed -->
+<div class="slide">
+  <div class="slide-number">04 / Feature</div>
+  <div class="feature-header">
+    <div class="feature-badge red">⚡</div>
+    <div>
+      <h2 style="margin-bottom:0">Real-time Anomaly Feed</h2>
+      <p style="color:var(--text2);font-size:0.9rem">SSE-streamed anomaly detection with geofence integration</p>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <div>
+      <div class="card">
+        <h3>Architecture</h3>
+        <ul>
+          <li>Micro-batch adapter (not per-event) in status_monitor_thread</li>
+          <li>Sliding window deque(maxlen=1000) for baseline statistics</li>
+          <li>Cross-references GeofenceManager for zone containment</li>
+          <li>Broadcasts via existing SSE infrastructure (new "anomaly" event type)</li>
+          <li>Three anomaly types: time, location, frequency</li>
+        </ul>
+        <div class="divider"></div>
+        <h3>Severity Coloring</h3>
+        <div style="display:flex;gap:12px;margin-top:8px">
+          <span class="tag green">Score &lt; 30</span>
+          <span class="tag" style="background:rgba(251,191,36,0.1);color:var(--yellow);border-color:rgba(251,191,36,0.2)">30-70</span>
+          <span class="tag red">Score &gt; 70</span>
+        </div>
+      </div>
+      <div class="api-block">
+        GET /api/anomalies?limit=100<br>
+        SSE /api/events/stream → type: "anomaly"
+      </div>
+    </div>
+    <div>
+      <img src="img/web-dashboard-live.png" class="screenshot" alt="Anomaly Feed Widget">
+    </div>
+  </div>
+</div>
+
+<!-- Slide 6: Dossier Export -->
+<div class="slide">
+  <div class="slide-number">05 / Feature</div>
+  <div class="feature-header">
+    <div class="feature-badge green">📄</div>
+    <div>
+      <h2 style="margin-bottom:0">OSINT Dossier Export</h2>
+      <p style="color:var(--text2);font-size:0.9rem">Self-contained HTML intelligence report fusing all modules</p>
+    </div>
+  </div>
+  <div class="grid grid-2">
+    <div>
+      <img src="img/web-dossier-report.png" class="screenshot" alt="Dossier Report" style="max-height:500px;object-fit:contain;object-position:top">
+    </div>
+    <div>
+      <div class="card">
+        <h3>Report Sections</h3>
+        <ul>
+          <li>Header with username, timestamp, event count</li>
+          <li>Privacy Risk Score with 6 sub-score gauges</li>
+          <li>Activity Profile (event types, active days, area)</li>
+          <li>Location Intelligence (home/work/transit inference)</li>
+          <li>Trip History with distance and duration</li>
+          <li>Social Network (top 10 connections)</li>
+          <li>Temporal Fingerprint (7x24 activity heatmap)</li>
+          <li>Anomaly Report with time/location/frequency</li>
+          <li>AI Narrative (Ollama, graceful fallback)</li>
+        </ul>
+      </div>
+      <div class="api-block">
+        GET /api/report/&lt;username&gt;<br>
+        GET /api/report/&lt;username&gt;?format=json<br>
+        CLI: waze dossier &lt;username&gt; --output file.html
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 7: TUI -->
+<div class="slide">
+  <div class="slide-number">06 / Terminal UI</div>
+  <h2>Terminal Interface (Bubble Tea)</h2>
+  <p class="subtitle">Full-screen Go TUI with the same amber/gold palette. Connects to Flask API for all intelligence features.</p>
+  <div class="grid grid-2" style="margin-top:24px">
+    <div>
+      <h3 style="margin-bottom:8px">Splash Screen</h3>
+      <img src="img/tui/tui-splash.png" class="tui-shot" alt="TUI Splash">
+    </div>
+    <div>
+      <h3 style="margin-bottom:8px">Live Dashboard</h3>
+      <img src="img/tui/tui-dashboard.png" class="tui-shot" alt="TUI Dashboard">
+    </div>
+  </div>
+  <div class="grid grid-2" style="margin-top:24px">
+    <div>
+      <h3 style="margin-bottom:8px">Investigation Workbench</h3>
+      <img src="img/tui/tui-investigation.png" class="tui-shot" alt="TUI Investigation">
+    </div>
+    <div>
+      <h3 style="margin-bottom:8px">Region Picker</h3>
+      <img src="img/tui/tui-regions.png" class="tui-shot" alt="TUI Regions">
+    </div>
+  </div>
+</div>
+
+<!-- Slide 8: Summary -->
+<div class="slide" style="text-align:center;align-items:center">
+  <div class="slide-number">07 / Summary</div>
+  <h2>What Changed</h2>
+  <div class="grid grid-2" style="max-width:800px;margin-top:24px">
+    <div class="card" style="text-align:left">
+      <h3>New Files (14)</h3>
+      <ul>
+        <li>anomaly_feed.py — streaming adapter</li>
+        <li>dossier_builder.py — fusion orchestrator</li>
+        <li>web/static/js/social-graph.js</li>
+        <li>web/static/js/encounter-map.js</li>
+        <li>web/static/js/anomaly-feed.js</li>
+        <li>web/templates/dossier.html</li>
+        <li>8 new test files</li>
+      </ul>
+    </div>
+    <div class="card" style="text-align:left">
+      <h3>Modified Files (7)</h3>
+      <ul>
+        <li>web/app.py — 3 new endpoints + SSE hook</li>
+        <li>web/templates/index.html — CDN + scripts</li>
+        <li>web/static/js/dashboard.js — widget registry</li>
+        <li>web/static/css/dashboard.css — new styles</li>
+        <li>cli.py — waze dossier command</li>
+      </ul>
+    </div>
+  </div>
+  <div style="margin-top:32px">
+    <span class="tag">489 tests passing</span>
+    <span class="tag blue">0 new dependencies</span>
+    <span class="tag green">0 schema changes</span>
+    <span class="tag">36 new tests added</span>
+  </div>
+</div>
+
+<div class="footer">
+  Waze OSINT Tracker — Intelligence Fusion Features — v1.3.0
+</div>
+
+</body>
+</html>

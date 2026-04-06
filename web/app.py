@@ -1322,7 +1322,7 @@ def api_social_graph_user(username):
     """Build and return ego network for a specific user."""
     from social_graph import build_social_graph, detect_communities, get_ego_network
 
-    depth = request.args.get("depth", 2, type=int)
+    depth = min(request.args.get("depth", 2, type=int), 5)
     min_co = request.args.get("min_cooccurrences", 3, type=int)
     limit = min(request.args.get("limit", 5000, type=int), 10000)
 
@@ -1425,6 +1425,11 @@ def api_encounters_schedule():
                 user_events.setdefault(r["username"], []).append(r)
         except Exception as e:
             logger.warning("Schedule query error for %s: %s", region, e)
+
+    # Cap to top 100 users by event count to prevent O(N^2) explosion
+    if len(user_events) > 100:
+        top_users = sorted(user_events, key=lambda u: len(user_events[u]), reverse=True)[:100]
+        user_events = {u: user_events[u] for u in top_users}
 
     hotspots = find_hotspot_encounters(user_events, top_n=limit)
 

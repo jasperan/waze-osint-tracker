@@ -3052,7 +3052,8 @@ def dossier(username, output):
     data = build_dossier(username, db)
 
     html = render_dossier_html(data)
-    out_path = output or f"{username}_dossier.html"
+    safe_name = "".join(c for c in username if c.isalnum() or c in "-_.")
+    out_path = output or f"{safe_name}_dossier.html"
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
 
