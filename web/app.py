@@ -18,12 +18,16 @@ from flask import Flask, Response, jsonify, render_template, request
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis import get_user_profile
+from anomaly_feed import AnomalyFeed
 from database import Database
 from ops_diagnostics import read_status_file
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Anomaly feed singleton for real-time streaming
+_anomaly_feed = AnomalyFeed()
 
 # Global event queue for SSE broadcasting
 event_queues = []
@@ -1381,6 +1385,41 @@ def api_encounter_hotspots():
 
     hotspots = find_hotspot_encounters(user_events, top_n=top_n)
     return jsonify(hotspots)
+
+
+@app.route("/api/encounters/schedule")
+def api_encounters_schedule():
+    """Return encounter predictions grouped by day/hour for heatmap animation."""
+    from encounter_prediction import find_hotspot_encounters
+
+    day = request.args.get("day", type=int)  # 0=Mon, 6=Sun, None=all
+    hour = request.args.get("hour", type=int)  # 0-23, None=all
+    limit = min(request.args.get("limit", 500, type=int), 2000)
+
+    user_events = {}
+    for region, db in get_all_dbs():
+        try:
+            rows = db.execute(
+                "SELECT username, latitude, longitude, timestamp_ms, report_type "
+                "FROM events ORDER BY timestamp_ms DESC LIMIT ?",
+                (limit * 10,),
+            ).fetchall()
+            for row in rows:
+                r = dict(row)
+                user_events.setdefault(r["username"], []).append(r)
+        except Exception as e:
+            logger.warning("Schedule query error for %s: %s", region, e)
+
+    hotspots = find_hotspot_encounters(user_events, top_n=limit)
+
+    # Apply day/hour filters
+    schedule = hotspots
+    if day is not None:
+        schedule = [h for h in schedule if h.get("day_of_week") == day]
+    if hour is not None:
+        schedule = [h for h in schedule if h.get("hour") == hour]
+
+    return jsonify({"schedule": schedule[:limit]})
 
 
 # ---------------------------------------------------------------------------

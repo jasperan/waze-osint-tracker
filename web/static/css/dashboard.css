@@ -1268,3 +1268,12 @@ body {
   .layer-bar { gap: 1px; padding: 2px; }
   .layer-btn { width: 28px; height: 28px; font-size: 0.85rem; }
 }
+
+/* === Encounter Map Widget === */
+#encounter-controls select, #encounter-controls input[type="range"] {
+    accent-color: var(--primary);
+}
+.encounter-popup { font-size: 0.75rem; }
+.encounter-popup .ep-users { color: var(--primary); font-weight: 600; }
+.encounter-popup .ep-prob { color: var(--accent-green); }
+.encounter-popup .ep-time { color: var(--text-secondary); }
