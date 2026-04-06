@@ -1194,6 +1194,60 @@ body {
   text-align: right;
 }
 
+/* === Social Graph Widget === */
+.social-graph-tooltip {
+    position: absolute;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-highlight);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: var(--glow-primary);
+}
+.social-graph-tooltip .tt-user { font-weight: 600; color: var(--primary); }
+.social-graph-tooltip .tt-stat { color: var(--text-secondary); }
+.social-graph-legend {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.65rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.social-graph-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.social-graph-legend-swatch {
+    width: 16px;
+    height: 3px;
+    border-radius: 2px;
+}
+.social-graph-back-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-highlight);
+    color: var(--primary);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    z-index: 10;
+    display: none;
+}
+.social-graph-back-btn:hover { background: var(--bg-elevated); }
+
 /* === Responsive Breakpoints === */
 
 @media (max-width: 1200px) {

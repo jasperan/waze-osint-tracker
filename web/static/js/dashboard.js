@@ -213,6 +213,8 @@ WIDGET_CONTENT['type-breakdown'] = () => `
 
 WIDGET_CONTENT['privacy'] = () => '<div class="privacy-list" id="privacy-list">Loading risk scores...</div>';
 
+WIDGET_CONTENT['social-graph'] = () => '<div id="social-graph-container" style="width:100%;height:100%;min-height:300px;position:relative"></div>';
+
 // === Deck Preset System ===
 
 const DECK_PRESETS = {
@@ -241,6 +243,7 @@ const DECK_PRESETS = {
               ]
             },
             { id: 'display', title: 'Display', x: 9, y: 0, w: 3, h: 4 },
+            { id: 'social-graph', title: 'Social Network', x: 3, y: 0, w: 6, h: 7 },
         ],
         layers: ['markers'],
         mapView: { center: [45, 10], zoom: 4 },
@@ -349,6 +352,7 @@ function switchDeck(deckKey) {
     if (deck.widgets.some(w => w.id === 'type-breakdown')) loadTypeBreakdown();
     if (deck.widgets.some(w => w.id === 'privacy')) loadPrivacyLeaderboard();
     if (deck.widgets.some(w => w.id === 'detail-map')) initDetailMap();
+    if (deck.widgets.some(w => w.id === 'social-graph') && window.WazeDash?.socialGraph) window.WazeDash.socialGraph.init('social-graph-container');
 
     // Re-render Leaflet map after GridStack layout changes
     setTimeout(() => map.invalidateSize(), 200);
