@@ -3033,5 +3033,37 @@ def _batch_privacy_scores(db, config, min_events):
     console.print(f"\n[info]Scored {len(results)} users total[/info]")
 
 
+@cli.command()
+@click.argument("username")
+@click.option(
+    "--output", "-o", default=None, help="Output file path (default: <username>_dossier.html)"
+)
+def dossier(username, output):
+    """Generate a comprehensive OSINT dossier for a user."""
+    from dossier_builder import build_dossier, render_dossier_html
+
+    match, dbs = resolve_user_match(username)
+    if match:
+        db = match["db"]
+    else:
+        db = get_db()
+
+    console.print(f"[info]Building dossier for {username}...[/info]")
+    data = build_dossier(username, db)
+
+    html = render_dossier_html(data)
+    out_path = output or f"{username}_dossier.html"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    console.print(f"[success]Dossier saved to {out_path}[/success]")
+    console.print(f"  [info]{data['total_events']} events fused across all intel modules[/info]")
+
+    if match:
+        close_dbs(dbs)
+    else:
+        db.close()
+
+
 if __name__ == "__main__":
     cli()

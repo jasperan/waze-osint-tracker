@@ -1390,20 +1390,25 @@ def api_encounter_hotspots():
 
 @app.route("/api/report/<username>")
 def api_report(username):
-    """Generate OSINT report for a user."""
-    from report_generator import generate_user_report, render_report_html
+    """Generate comprehensive OSINT dossier for a user.
+
+    Returns full HTML dossier by default, or JSON with ``?format=json``.
+    """
+    from dossier_builder import build_dossier, render_dossier_html
 
     fmt = request.args.get("format", "html")
     match = resolve_user_match(username)
     db = match["db"] if match else get_db()
-    report = generate_user_report(username, db)
+    dossier = build_dossier(username, db)
     if match:
-        report.setdefault("region", match["region"])
+        dossier.setdefault("region", match["region"])
+        if dossier.get("report"):
+            dossier["report"].setdefault("region", match["region"])
 
     if fmt == "json":
-        return jsonify(report)
+        return jsonify(dossier)
 
-    html = render_report_html(report)
+    html = render_dossier_html(dossier)
     return Response(html, mimetype="text/html")
 
 
