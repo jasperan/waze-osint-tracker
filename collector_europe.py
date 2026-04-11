@@ -135,7 +135,7 @@ class EuropeCollector:
                 stats["requests"] += 1
                 self.stats["total_requests"] += 1
 
-                alerts, jams = client.get_traffic_notifications(
+                alerts, _ = client.get_traffic_notifications(
                     lat_top=cell["lat_top"],
                     lat_bottom=cell["lat_bottom"],
                     lon_left=cell["lon_left"],
@@ -194,7 +194,7 @@ class EuropeCollector:
         self.running = True
         self._save_pid()
 
-        def handle_signal(signum, frame):
+        def handle_signal(_signum, _frame):
             logger.info("Shutdown signal received...")
             self.running = False
 

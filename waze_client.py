@@ -59,6 +59,7 @@ class WazeClient:
                        We now query Waze API directly.
             timeout: Request timeout in seconds.
         """
+        del server_url  # kept in signature for backwards compatibility
         self.timeout = timeout
         self.rate_limiter = RateLimiter(min_delay=1.5, max_delay=30.0)
         self.session = requests.Session()
@@ -170,44 +171,6 @@ class WazeClient:
             return f"user_{uuid[:8]}"
 
         return "anonymous"
-
-    def get_users(
-        self, lat_top: float, lat_bottom: float, lon_left: float, lon_right: float
-    ) -> List[Dict[str, Any]]:
-        """Get active Waze users in a bounding box."""
-        self.rate_limiter.wait()
-
-        try:
-            response = self.session.get(
-                self.WAZE_API_URL,
-                params={
-                    "top": str(lat_top),
-                    "bottom": str(lat_bottom),
-                    "left": str(lon_left),
-                    "right": str(lon_right),
-                    "env": "row",
-                    "types": "users",
-                },
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            self.rate_limiter.success()
-            data = response.json()
-
-            users = []
-            for user in data.get("users", []):
-                loc = user.get("location", {})
-                users.append(
-                    {
-                        **user,
-                        "latitude": loc.get("y"),
-                        "longitude": loc.get("x"),
-                    }
-                )
-            return users
-        except requests.RequestException:
-            self.rate_limiter.error()
-            raise
 
     def health_check(self) -> bool:
         """Check if the Waze API is responding."""

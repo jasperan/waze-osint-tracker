@@ -201,19 +201,6 @@ def get_stats_dbs():
     return dbs
 
 
-def query_all_dbs(query_func):
-    """Execute a function on all databases and combine results."""
-    all_results = []
-    for region, db in get_all_dbs():
-        try:
-            results = query_func(db, region)
-            if results:
-                all_results.extend(results)
-        except Exception as e:
-            print(f"Error querying {region}: {e}")
-    return all_results
-
-
 def resolve_user_match(username: str):
     """Resolve a user across all available databases."""
     from user_lookup import find_user_match

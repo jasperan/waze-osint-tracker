@@ -80,15 +80,6 @@ def save_checkpoint(cycle: int, scanned: Dict[str, List[str]]):
         pass
 
 
-def clear_checkpoint():
-    """Clear checkpoint file when cycle completes."""
-    try:
-        if os.path.exists(CHECKPOINT_FILE):
-            os.remove(CHECKPOINT_FILE)
-    except Exception:
-        pass
-
-
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -370,7 +361,7 @@ class WorldwideCollector:
         self.running = True
         self._save_pid()
 
-        def handle_signal(signum, frame):
+        def handle_signal(_signum, _frame):
             logger.info("Shutdown signal received...")
             self.running = False
 

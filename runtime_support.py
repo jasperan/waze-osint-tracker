@@ -8,8 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import requests
-
 DEFAULT_STALE_SECONDS = 600
 
 
@@ -93,29 +91,3 @@ def find_available_port(
         if is_port_available(candidate, host=host):
             return candidate
     raise RuntimeError(f"No free port found in range {preferred}-{preferred + max_tries - 1}")
-
-
-def probe_api(base_url: str, *, timeout: float = 2.0) -> dict[str, Any]:
-    """Probe a local API for basic reachability and health."""
-    base = base_url.rstrip("/")
-    result: dict[str, Any] = {
-        "base_url": base,
-        "reachable": False,
-    }
-
-    try:
-        stats_resp = requests.get(f"{base}/api/stats", timeout=timeout)
-        result["stats_status"] = stats_resp.status_code
-        if stats_resp.ok:
-            result["stats"] = stats_resp.json()
-
-        status_resp = requests.get(f"{base}/api/status", timeout=timeout)
-        result["collector_status_code"] = status_resp.status_code
-        if status_resp.ok:
-            result["collector_status"] = status_resp.json()
-
-        result["reachable"] = stats_resp.ok and status_resp.ok
-    except Exception as exc:
-        result["error"] = str(exc)
-
-    return result

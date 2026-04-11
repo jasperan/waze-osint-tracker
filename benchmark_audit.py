@@ -35,22 +35,6 @@ from utils import haversine_m as _haversine_m
 RESULTS: Dict[str, Dict[str, float]] = {}
 
 
-def _timed(label: str, phase: str):
-    """Decorator that records wall-clock time into RESULTS[label][phase]."""
-
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            start = time.perf_counter()
-            result = func(*args, **kwargs)
-            elapsed = time.perf_counter() - start
-            RESULTS.setdefault(label, {})[phase] = elapsed
-            return result
-
-        return wrapper
-
-    return decorator
-
-
 # ===================================================================
 # 1. Co-occurrence detection
 # ===================================================================

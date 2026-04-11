@@ -347,15 +347,6 @@ def save_checkpoint(cycle: int, scanned: dict):
         pass
 
 
-def clear_checkpoint():
-    """Clear checkpoint file when cycle completes."""
-    try:
-        if os.path.exists(CHECKPOINT_FILE):
-            os.remove(CHECKPOINT_FILE)
-    except Exception:
-        pass
-
-
 def resolve_web_port(port: int, auto_port: bool) -> int:
     """Return the requested port or the next available local port."""
     if not auto_port:
@@ -865,7 +856,7 @@ class CLIWorldwideCollector:
         # Log startup
         self.log(f"Worldwide collector started (PID {os.getpid()})")
 
-        def handle_signal(signum, frame):
+        def handle_signal(_signum, _frame):
             console.print("\n[bold yellow]Shutdown signal received...[/bold yellow]")
             self.log("Shutdown signal received...")
             self.running = False

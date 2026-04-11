@@ -9,7 +9,6 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import requests
 
@@ -102,13 +101,6 @@ def find_available_port(
         return preferred_port
 
 
-def choose_web_port(requested_port: int, auto_port: bool) -> int:
-    """Resolve the effective web port for CLI commands."""
-    if auto_port:
-        return find_available_port(preferred_port=requested_port)
-    return requested_port
-
-
 def api_probe(base_url: str, timeout: float = 2.0) -> dict[str, Any]:
     """Probe a local or remote API base for basic health."""
     result: dict[str, Any] = {
@@ -142,12 +134,6 @@ def api_probe(base_url: str, timeout: float = 2.0) -> dict[str, Any]:
         result["error"] = str(exc)
 
     return result
-
-
-def parse_port_from_api_url(api_url: str) -> int | None:
-    """Extract a port from an API base URL."""
-    parsed = urlparse(api_url)
-    return parsed.port
 
 
 def _sqlite_summary(path: Path) -> dict[str, Any]:

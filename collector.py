@@ -149,7 +149,7 @@ class Collector:
         if self.web_port:
             self._start_web_server()
 
-        def handle_signal(signum, frame):
+        def handle_signal(_signum, _frame):
             self.log("Shutting down collector...")
             self.running = False
 
@@ -176,7 +176,7 @@ class Collector:
                     try:
                         cycle_requests += 1
                         params = cell.to_params()
-                        alerts, jams = client.get_traffic_notifications(
+                        alerts, _ = client.get_traffic_notifications(
                             lat_top=params["lat_top"],
                             lat_bottom=params["lat_bottom"],
                             lon_left=params["lon_left"],
