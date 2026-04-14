@@ -357,7 +357,7 @@ The dashboard uses a **Dark Map Intelligence** aesthetic with amber/gold accents
 
 | Component | Description |
 |-----------|-------------|
-| **Color Palette** | Amber/gold (#E8A817) on deep navy (#06080C) |
+| **Color Palette** | Amber/gold (#E8A817) on deep navy (#0A0C10) |
 | **Typography** | Instrument Sans for UI, IBM Plex Mono for data |
 | **Layout** | GridStack widget system with draggable/resizable panels |
 | **Map Style** | Dark-themed Leaflet with heatmap + marker layers |
