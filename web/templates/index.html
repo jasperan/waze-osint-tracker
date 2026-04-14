@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Traffic Intelligence</title>
+    <meta name="description" content="Real-time global traffic intelligence dashboard. Monitor police, jam, hazard, and accident reports worldwide.">
+    <meta name="theme-color" content="#0a0c10">
+    <meta property="og:title" content="Global Traffic Intelligence">
+    <meta property="og:description" content="Real-time worldwide traffic event monitoring and OSINT analysis.">
+    <meta property="og:type" content="website">
 
     <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%2306080c'/><circle cx='50' cy='50' r='25' fill='none' stroke='%23e8a817' stroke-width='3'/><circle cx='50' cy='50' r='8' fill='%23e8a817'/></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%230a0c10'/><circle cx='50' cy='50' r='25' fill='none' stroke='%23e8a817' stroke-width='3'/><circle cx='50' cy='50' r='8' fill='%23e8a817'/></svg>">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,50 +32,53 @@
     <script src="https://unpkg.com/three-globe@2.31.0/dist/three-globe.min.js"></script>
 </head>
 <body>
+    <!-- Skip to content (accessibility) -->
+    <a href="#map" class="skip-link">Skip to map</a>
+
     <!-- Top Toolbar -->
-    <div class="top-toolbar" id="top-toolbar">
+    <header class="top-toolbar" id="top-toolbar">
         <div class="toolbar-left">
             <h1 class="app-title">Traffic Intelligence</h1>
-            <span class="app-subtitle">GLOBAL REAL-TIME MONITOR</span>
+            <span class="app-subtitle">Global real-time monitor</span>
         </div>
-        <div class="toolbar-center">
+        <nav class="toolbar-center" aria-label="Dashboard views">
             <div class="deck-selector" id="deck-selector"></div>
-        </div>
+        </nav>
         <div class="toolbar-right">
             <div class="time-controls" id="time-controls"></div>
-            <div class="connection-badge">
-                <span class="status-dot"></span>
+            <div class="connection-badge" role="status" aria-live="polite">
+                <span class="status-dot" aria-hidden="true"></span>
                 <span id="connection-status">Connecting...</span>
             </div>
         </div>
-    </div>
+    </header>
 
     <!-- Main Content Area -->
-    <div class="main-content">
+    <main class="main-content">
         <div class="map-layer">
-            <div id="map"></div>
-            <div class="layer-bar" id="layer-bar"></div>
+            <div id="map" role="application" aria-label="Traffic event map"></div>
+            <div class="layer-bar" id="layer-bar" role="toolbar" aria-label="Map layers"></div>
 
             <!-- Status Bar -->
-            <div class="status-bar">
-                <span class="status-dot"></span>
+            <div class="status-bar" role="status">
+                <span class="status-dot" aria-hidden="true"></span>
                 <span id="status-text">Initializing...</span>
             </div>
 
             <!-- Legend -->
-            <div class="legend" id="map-legend">
+            <aside class="legend" id="map-legend" aria-label="Density legend">
                 <h4>Density</h4>
-                <div class="legend-gradient"></div>
-                <div class="legend-labels">
+                <div class="legend-gradient" aria-hidden="true"></div>
+                <div class="legend-labels" aria-hidden="true">
                     <span>Low</span>
                     <span>High</span>
                 </div>
-            </div>
+            </aside>
         </div>
         <div class="widget-area">
             <div class="grid-stack" id="widget-grid"></div>
         </div>
-    </div>
+    </main>
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

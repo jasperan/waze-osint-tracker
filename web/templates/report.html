@@ -5,25 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OSINT Report: {{ report.username }}</title>
 <style>
+  :root {
+    --bg-deep: #0a0c10;
+    --bg-surface: #10141c;
+    --bg-elevated: #171d28;
+    --primary: #e8a817;
+    --accent-red: #f87171;
+    --accent-green: #34d399;
+    --accent-yellow: #fbbf24;
+    --text-primary: #e8e4dc;
+    --text-secondary: #8b9ab5;
+    --border: rgba(232, 168, 23, 0.08);
+    --border-subtle: rgba(232, 168, 23, 0.12);
+  }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
     line-height: 1.6;
     padding: 2rem;
   }
-  a { color: #3b82f6; }
+  a { color: var(--primary); }
   .container { max-width: 960px; margin: 0 auto; }
 
   /* Header */
   .header {
-    border-bottom: 2px solid #e8a817;
+    border-bottom: 2px solid var(--primary);
     padding-bottom: 1rem;
     margin-bottom: 2rem;
   }
-  .header h1 { color: #e8a817; font-size: 1.8rem; }
-  .header .meta { color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem; }
+  .header h1 { color: var(--primary); font-size: 1.8rem; letter-spacing: -0.01em; text-wrap: balance; }
+  .header .meta { color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem; font-family: 'IBM Plex Mono', monospace; }
 
   /* Stat grid */
   .stat-grid {
@@ -33,32 +46,32 @@
     margin-bottom: 2rem;
   }
   .stat-card {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 1.2rem;
     text-align: center;
   }
-  .stat-card .value { font-size: 2rem; font-weight: 700; color: #e8a817; }
-  .stat-card .label { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-card .value { font-size: 2rem; font-weight: 700; color: var(--primary); font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .stat-card .label { font-size: 0.8rem; color: var(--text-secondary); font-variant-caps: all-small-caps; letter-spacing: 0.05em; }
 
   /* Sections */
   .section { margin-bottom: 2rem; }
   .section h2 {
-    color: #3b82f6;
+    color: var(--primary);
     font-size: 1.2rem;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--border-subtle);
     padding-bottom: 0.5rem;
     margin-bottom: 1rem;
   }
 
   /* Risk bars */
   .risk-row { display: flex; align-items: center; margin-bottom: 0.6rem; }
-  .risk-label { width: 200px; font-size: 0.85rem; color: #cbd5e1; }
+  .risk-label { width: 200px; font-size: 0.85rem; color: var(--text-secondary); }
   .risk-bar-bg {
     flex: 1;
     height: 12px;
-    background: #1e293b;
+    background: var(--bg-elevated);
     border-radius: 6px;
     overflow: hidden;
     margin-right: 0.75rem;
@@ -68,17 +81,17 @@
     border-radius: 6px;
     transition: width 0.4s;
   }
-  .risk-val { width: 50px; text-align: right; font-size: 0.85rem; font-weight: 600; }
-  .risk-low { background: #22c55e; }
-  .risk-med { background: #eab308; }
-  .risk-high { background: #ef4444; }
+  .risk-val { width: 50px; text-align: right; font-size: 0.85rem; font-weight: 600; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .risk-low { background: var(--accent-green); }
+  .risk-med { background: var(--accent-yellow); }
+  .risk-high { background: var(--accent-red); }
 
   /* Tables */
   table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #1e293b; }
-  th { color: #e8a817; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; background: #1e293b; }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+  th { color: var(--primary); font-size: 0.75rem; font-variant-caps: all-small-caps; letter-spacing: 0.05em; background: var(--bg-elevated); font-family: 'IBM Plex Mono', monospace; }
   td { font-size: 0.85rem; }
-  tr:hover td { background: #1e293b; }
+  tr:hover td { background: var(--bg-surface); }
 </style>
 </head>
 <body>

@@ -6,18 +6,20 @@
 <title>OSINT Dossier: {{ dossier.username }}</title>
 <style>
   :root {
-    --bg-deep: #06080c;
-    --bg-surface: #0c1017;
-    --bg-elevated: #131820;
+    --bg-deep: #0a0c10;
+    --bg-surface: #10141c;
+    --bg-elevated: #171d28;
     --primary: #e8a817;
     --accent-red: #f87171;
     --accent-green: #34d399;
+    --accent-yellow: #fbbf24;
     --text-primary: #e8e4dc;
     --text-secondary: #8b9ab5;
+    --border-subtle: rgba(232, 168, 23, 0.12);
   }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-deep);
     color: var(--text-primary);
     line-height: 1.6;
@@ -36,18 +38,22 @@
   .header .label {
     font-size: 0.7rem;
     letter-spacing: 0.3em;
-    text-transform: uppercase;
+    font-variant-caps: all-small-caps;
     color: var(--primary);
     margin-bottom: 0.25rem;
+    font-family: 'IBM Plex Mono', monospace;
   }
   .header h1 {
     color: var(--primary);
     font-size: 2rem;
     margin-bottom: 0.25rem;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
   }
   .header .meta {
     color: var(--text-secondary);
     font-size: 0.85rem;
+    font-family: 'IBM Plex Mono', monospace;
   }
 
   /* Stat grid */
@@ -59,20 +65,20 @@
   }
   .stat-card {
     background: var(--bg-elevated);
-    border: 1px solid #1e293b;
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 1.2rem;
     text-align: center;
   }
-  .stat-card .value { font-size: 2rem; font-weight: 700; color: var(--primary); }
-  .stat-card .label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-card .value { font-size: 2rem; font-weight: 700; color: var(--primary); font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+  .stat-card .label { font-size: 0.8rem; color: var(--text-secondary); font-variant-caps: all-small-caps; letter-spacing: 0.05em; }
 
   /* Section */
   .section { margin-bottom: 2rem; }
   .section h2 {
     color: var(--primary);
     font-size: 1.2rem;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--border-subtle);
     padding-bottom: 0.5rem;
     margin-bottom: 1rem;
   }
@@ -96,6 +102,8 @@
     font-size: 4rem;
     font-weight: 800;
     line-height: 1;
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
   }
   .score-low { color: var(--accent-green); }
   .score-med { color: var(--primary); }
@@ -120,7 +128,7 @@
     height: 100%;
     border-radius: 6px;
   }
-  .risk-val { width: 50px; text-align: right; font-size: 0.85rem; font-weight: 600; }
+  .risk-val { width: 50px; text-align: right; font-size: 0.85rem; font-weight: 600; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
   .bar-low { background: var(--accent-green); }
   .bar-med { background: var(--primary); }
   .bar-high { background: var(--accent-red); }
@@ -145,8 +153,8 @@
 
   /* Tables */
   table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #1e293b; }
-  th { color: var(--primary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; background: var(--bg-elevated); }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+  th { color: var(--primary); font-size: 0.75rem; font-variant-caps: all-small-caps; letter-spacing: 0.05em; background: var(--bg-elevated); font-family: 'IBM Plex Mono', monospace; }
   td { font-size: 0.85rem; }
   tr:hover td { background: var(--bg-elevated); }
 
@@ -189,7 +197,7 @@
   .footer {
     margin-top: 3rem;
     padding-top: 1rem;
-    border-top: 1px solid #1e293b;
+    border-top: 1px solid var(--border-subtle);
     text-align: center;
     color: var(--text-secondary);
     font-size: 0.75rem;
