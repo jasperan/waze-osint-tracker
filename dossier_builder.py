@@ -2,12 +2,101 @@
 
 import logging
 import os
+from collections import Counter
 from datetime import datetime, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def build_dossier(username: str, db) -> dict:
+def _trip_to_template_dict(trip: Any) -> dict[str, Any]:
+    """Return a trip dict with legacy template aliases."""
+    if isinstance(trip, dict):
+        data = dict(trip)
+    elif hasattr(trip, "to_dict"):
+        data = trip.to_dict()
+    else:
+        data = {
+            "started_at": getattr(trip, "started_at", ""),
+            "ended_at": getattr(trip, "ended_at", ""),
+            "distance_km": getattr(trip, "distance_km", 0),
+            "duration_minutes": getattr(trip, "duration_minutes", 0),
+            "trip_type": getattr(trip, "trip_type", ""),
+        }
+
+    data.setdefault("start_time", data.get("started_at", ""))
+    data.setdefault("end_time", data.get("ended_at", ""))
+    data.setdefault("duration_min", data.get("duration_minutes", 0))
+    data.setdefault("label", data.get("trip_type", ""))
+    return data
+
+
+def _format_anomaly_sections(result: dict[str, Any]) -> dict[str, Any]:
+    """Add template-friendly grouped anomaly summaries to detector output."""
+    grouped: dict[str, list[str]] = {
+        "time_anomalies": [],
+        "location_anomalies": [],
+        "frequency_anomalies": [],
+    }
+    for anomaly in result.get("anomalies", []):
+        kind = anomaly.get("type", "unknown")
+        details = anomaly.get("details", {})
+        score = anomaly.get("score", 0)
+        summary = f"{kind} anomaly score={score}: {details}"
+        if kind == "time":
+            grouped["time_anomalies"].append(summary)
+        elif kind == "location":
+            grouped["location_anomalies"].append(summary)
+        elif kind == "frequency":
+            grouped["frequency_anomalies"].append(summary)
+
+    return {**result, **grouped}
+
+
+def _build_ai_profile(
+    username: str,
+    events: list[dict[str, Any]],
+    dossier: dict[str, Any],
+    routines: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the profile shape expected by intel_dossier.generate_dossier."""
+    timestamps = [e.get("timestamp_utc") for e in events if e.get("timestamp_utc")]
+    type_distribution = Counter(str(e.get("report_type", "UNKNOWN")) for e in events)
+    privacy_score = dossier.get("privacy_score") or {}
+    schedule = (privacy_score.get("details") or {}).get("schedule_predictability", {})
+    social = dossier.get("social") or {}
+    report = dossier.get("report") or {}
+
+    co_occurrence_partners = []
+    for edge in social.get("top_connections", []):
+        source = edge.get("source")
+        target = edge.get("target")
+        other = target if source == username else source
+        if other:
+            co_occurrence_partners.append({"username": other, "co_count": edge.get("weight", 0)})
+
+    return {
+        "username": username,
+        "event_count": len(events),
+        "days_active": report.get("active_days", 0),
+        "first_seen": min(timestamps) if timestamps else "N/A",
+        "last_seen": max(timestamps) if timestamps else "N/A",
+        "region": events[0].get("region", events[0].get("grid_cell", "unknown"))
+        if events
+        else "unknown",
+        "type_distribution": dict(type_distribution),
+        "routines": routines,
+        "peak_hours": schedule.get("peak_hours", []),
+        "peak_days": schedule.get("peak_days", []),
+        "cadence_mean_hours": "N/A",
+        "cadence_std_hours": "N/A",
+        "similar_users": [],
+        "co_occurrence_partners": co_occurrence_partners,
+        "prediction": {},
+    }
+
+
+def build_dossier(username: str, db) -> dict[str, Any]:
     """Build a complete intelligence dossier for username from db.
 
     Calls each intel module with try/except so partial failures
@@ -17,13 +106,21 @@ def build_dossier(username: str, db) -> dict:
         "SELECT * FROM events WHERE username = ? ORDER BY timestamp_ms DESC",
         (username,),
     ).fetchall()
-    events = [dict(r) for r in rows]
+    events: list[dict[str, Any]] = [dict(r) for r in rows]
 
-    dossier = {
+    dossier: dict[str, Any] = {
         "username": username,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_events": len(events),
     }
+
+    routines: dict[str, Any] = {}
+    try:
+        from intel_routines import infer_routines
+
+        routines = infer_routines(events)
+    except Exception as e:
+        logger.warning("Routine inference failed: %s", e)
 
     # 1. Basic report
     try:
@@ -36,10 +133,9 @@ def build_dossier(username: str, db) -> dict:
 
     # 2. Privacy score
     try:
-        from privacy_score import PrivacyScorer
+        from privacy_score import compute_privacy_score
 
-        scorer = PrivacyScorer()
-        dossier["privacy_score"] = scorer.calculate_score(username, events)
+        dossier["privacy_score"] = compute_privacy_score(events=events, routines=routines)
     except Exception as e:
         logger.warning("Privacy score failed: %s", e)
         dossier["privacy_score"] = None
@@ -48,7 +144,8 @@ def build_dossier(username: str, db) -> dict:
     try:
         from trip_reconstruction import reconstruct_trips
 
-        dossier["trips"] = reconstruct_trips(events)
+        trips = reconstruct_trips(events, username, routines=routines)
+        dossier["trips"] = [_trip_to_template_dict(trip) for trip in trips]
     except Exception as e:
         logger.warning("Trip reconstruction failed: %s", e)
         dossier["trips"] = None
@@ -76,9 +173,9 @@ def build_dossier(username: str, db) -> dict:
 
     # 5. Temporal fingerprint
     try:
-        from temporal_fingerprint import compute_fingerprint
+        from temporal_fingerprint import build_fingerprint
 
-        dossier["fingerprint"] = compute_fingerprint(events)
+        dossier["fingerprint"] = build_fingerprint(events)
     except Exception as e:
         logger.warning("Temporal fingerprint failed: %s", e)
         dossier["fingerprint"] = None
@@ -87,7 +184,7 @@ def build_dossier(username: str, db) -> dict:
     try:
         from anomaly_detection import detect_anomalies
 
-        dossier["anomalies"] = detect_anomalies(events)
+        dossier["anomalies"] = _format_anomaly_sections(detect_anomalies(events, routines=routines))
     except Exception as e:
         logger.warning("Anomaly detection failed: %s", e)
         dossier["anomalies"] = None
@@ -96,7 +193,9 @@ def build_dossier(username: str, db) -> dict:
     try:
         from intel_dossier import generate_dossier as gen_ai_dossier
 
-        dossier["ai_narrative"] = gen_ai_dossier(username, events, db=db)
+        dossier["ai_narrative"] = gen_ai_dossier(
+            _build_ai_profile(username, events, dossier, routines)
+        )
     except Exception as e:
         logger.warning("AI narrative failed: %s", e)
         dossier["ai_narrative"] = None

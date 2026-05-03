@@ -21,6 +21,7 @@ from analysis import get_user_profile
 from anomaly_feed import AnomalyFeed
 from database import Database
 from ops_diagnostics import read_status_file
+from web.event_filters import build_where, parse_event_filters
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,7 @@ def _load_web_config():
         if os.path.exists(full_path):
             with open(full_path) as f:
                 return yaml.safe_load(f)
-    # Final fallback
-    with open(os.path.join(_PROJECT_ROOT, "config.yaml")) as f:
-        return yaml.safe_load(f)
+    raise FileNotFoundError("No config_oracle.yaml or config.yaml found in project root")
 
 
 def _get_oracle_database(config: dict[str, Any]):
@@ -316,67 +315,21 @@ def api_stats():
 @app.route("/api/events")
 def api_events():
     """Get events with optional filters from all databases."""
-    # Parse query parameters
-    event_type = request.args.get("type")
-    event_subtype = request.args.get("subtype")  # filter by subtype
-    since = request.args.get("since")  # hours ago
-    date_from = request.args.get("from")  # ISO date string
-    date_to = request.args.get("to")  # ISO date string
-    username = request.args.get("user")  # filter by username
-    region_filter = request.args.get("region")  # filter by region
-    limit = min(request.args.get("limit", 1000, type=int), 10000)
+    filters = parse_event_filters(request.args)
+    if filters.error_message:
+        return jsonify({"error": filters.error_message}), 400
+    limit = max(0, min(request.args.get("limit", 1000, type=int), 10000))
 
     all_events = []
 
     for region, db in get_all_dbs():
-        # With SQLite, skip databases that don't match the filter.
-        # With Oracle (region == "all"), add a SQL WHERE clause instead.
+        region_filter = filters.region_filter
         if region_filter and region != "all" and region != region_filter:
             continue
         try:
-            query = "SELECT * FROM events WHERE 1=1"
-            params = []
-
-            # Oracle: filter by region column inside the single DB
-            if region_filter and region == "all":
-                query += " AND region = ?"
-                params.append(region_filter)
-
-            if event_type:
-                query += " AND report_type = ?"
-                params.append(event_type.upper())
-
-            if event_subtype:
-                query += " AND subtype = ?"
-                params.append(event_subtype)
-
-            if username:
-                query += " AND username = ?"
-                params.append(username)
-
-            if since:
-                try:
-                    hours = int(since)
-                except (ValueError, TypeError):
-                    return jsonify({"error": "Invalid 'since' parameter, must be integer"}), 400
-                cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-                query += " AND timestamp_utc >= ?"
-                params.append(cutoff.isoformat())
-            elif date_from:
-                query += " AND timestamp_utc >= ?"
-                params.append(date_from)
-
-            if date_to:
-                date_to_val = date_to
-                if len(date_to_val) == 10:
-                    date_to_val += "T23:59:59"
-                query += " AND timestamp_utc <= ?"
-                params.append(date_to_val)
-
-            query += " ORDER BY timestamp_ms DESC LIMIT ?"
-            params.append(limit)
-
-            rows = db.execute(query, tuple(params)).fetchall()
+            where, p = build_where(filters.conditions, filters.params, region_filter, region)
+            query = f"SELECT * FROM events WHERE {where} ORDER BY timestamp_ms DESC LIMIT ?"
+            rows = db.execute(query, p + (limit,)).fetchall()
 
             for row in rows:
                 evt_region = row.get("region", region) if region == "all" else region
@@ -396,7 +349,6 @@ def api_events():
         except Exception as e:
             print(f"Events error for {region}: {e}")
 
-    # Sort by timestamp and limit
     all_events.sort(key=lambda x: x["timestamp"] or "", reverse=True)
     return jsonify(all_events[:limit])
 
@@ -404,65 +356,23 @@ def api_events():
 @app.route("/api/heatmap")
 def api_heatmap():
     """Get events formatted for heatmap layer from all databases."""
-    since = request.args.get("since")  # hours ago
-    event_type = request.args.get("type")
-    event_subtype = request.args.get("subtype")  # filter by subtype
-    date_from = request.args.get("from")  # ISO date string
-    date_to = request.args.get("to")  # ISO date string
-    username = request.args.get("user")  # filter by username
-    region_filter = request.args.get("region")  # filter by region
+    filters = parse_event_filters(request.args)
+    if filters.error_message:
+        return jsonify({"error": filters.error_message}), 400
 
-    # Aggregate heatmap data from all databases
     location_weights = {}
 
     for region, db in get_all_dbs():
-        # With SQLite, skip databases that don't match the filter.
-        # With Oracle (region == "all"), add a SQL WHERE clause instead.
+        region_filter = filters.region_filter
         if region_filter and region != "all" and region != region_filter:
             continue
         try:
-            query = "SELECT latitude, longitude, COUNT(*) as weight FROM events WHERE 1=1"
-            params = []
-
-            # Oracle: filter by region column inside the single DB
-            if region_filter and region == "all":
-                query += " AND region = ?"
-                params.append(region_filter)
-
-            if event_type:
-                query += " AND report_type = ?"
-                params.append(event_type.upper())
-
-            if event_subtype:
-                query += " AND subtype = ?"
-                params.append(event_subtype)
-
-            if username:
-                query += " AND username = ?"
-                params.append(username)
-
-            if since:
-                try:
-                    hours = int(since)
-                except (ValueError, TypeError):
-                    return jsonify({"error": "Invalid 'since' parameter, must be integer"}), 400
-                cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-                query += " AND timestamp_utc >= ?"
-                params.append(cutoff.isoformat())
-            elif date_from:
-                query += " AND timestamp_utc >= ?"
-                params.append(date_from)
-
-            if date_to:
-                date_to_val = date_to
-                if len(date_to_val) == 10:
-                    date_to_val += "T23:59:59"
-                query += " AND timestamp_utc <= ?"
-                params.append(date_to_val)
-
-            query += " GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)"
-
-            rows = db.execute(query, tuple(params)).fetchall()
+            where, p = build_where(filters.conditions, filters.params, region_filter, region)
+            query = (
+                f"SELECT latitude, longitude, COUNT(*) as weight FROM events"
+                f" WHERE {where} GROUP BY ROUND(latitude, 4), ROUND(longitude, 4)"
+            )
+            rows = db.execute(query, p).fetchall()
 
             for row in rows:
                 key = (round(row["latitude"], 4), round(row["longitude"], 4))
@@ -471,9 +381,7 @@ def api_heatmap():
         except Exception as e:
             print(f"Heatmap error for {region}: {e}")
 
-    # Format for Leaflet heatmap: [[lat, lng, intensity], ...]
     heatmap_data = [[lat, lon, weight] for (lat, lon), weight in location_weights.items()]
-
     return jsonify(heatmap_data)
 
 

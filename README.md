@@ -94,12 +94,20 @@ uv run ruff format .
 # Type check
 uv run ty check .
 
+# Build package artifacts
+uv build
+
+# Go TUI checks
+cd tui && go test ./...
+
 # Add a new dependency
 uv add <package>
 
 # Add a dev dependency
 uv add --dev <package>
 ```
+
+CI runs the same core gates on every pull request and `main` push: Ruff, `ty`, pytest, package build, and Go TUI tests.
 
 ## Terminal UI (TUI)
 
